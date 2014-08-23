@@ -1,10 +1,10 @@
 package main
 
 import (
-	"cascades/runtime"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
@@ -92,12 +92,11 @@ func main() {
 
 		switch {
 		case runtime.IsPacket(ip):
-			log.Println("IP:", string(ip[1]))
+			fmt.Println("IP:", string(ip[1]))
 		case runtime.IsOpenBracket(ip):
-			log.Println("[")
+			fmt.Println("[")
 		case runtime.IsCloseBracket(ip):
-			log.Println("]")
+			fmt.Println("]")
 		}
-
 	}
 }

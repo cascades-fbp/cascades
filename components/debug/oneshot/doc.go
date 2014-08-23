@@ -1,7 +1,7 @@
 package main
 
 import (
-	"cascades/registry"
+	"github.com/cascades-fbp/cascades/registry"
 )
 
 var registryEntry = &registry.Entry{

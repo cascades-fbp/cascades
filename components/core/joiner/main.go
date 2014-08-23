@@ -1,10 +1,10 @@
 package main
 
 import (
-	"cascades/runtime"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"

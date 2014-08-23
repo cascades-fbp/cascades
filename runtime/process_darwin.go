@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"cascades/log"
 	"fmt"
+	"github.com/cascades-fbp/cascades/log"
 	"os"
 	"os/exec"
 	"syscall"

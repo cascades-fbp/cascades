@@ -1,11 +1,11 @@
 package runtime
 
 import (
-	"cascades/graph"
-	"cascades/log"
-	"cascades/registry"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/graph"
+	"github.com/cascades-fbp/cascades/log"
+	"github.com/cascades-fbp/cascades/registry"
 	"strings"
 	"sync"
 	"time"

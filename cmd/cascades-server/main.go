@@ -1,11 +1,11 @@
 package main
 
 import (
-	"cascades/registry"
 	"code.google.com/p/go.net/websocket"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/cascades-fbp/cascades/registry"
 	"io/ioutil"
 	"log"
 	"net/http"

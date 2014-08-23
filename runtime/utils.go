@@ -1,8 +1,8 @@
 package runtime
 
 import (
-	"cascades/graph"
 	"fmt"
+	"github.com/cascades-fbp/cascades/graph"
 	"io/ioutil"
 	"strings"
 )

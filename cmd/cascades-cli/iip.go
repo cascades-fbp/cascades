@@ -1,9 +1,9 @@
 package main
 
 import (
-	"cascades/log"
-	"cascades/runtime"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/log"
+	"github.com/cascades-fbp/cascades/runtime"
 	"github.com/spf13/cobra"
 	"os"
 	"time"

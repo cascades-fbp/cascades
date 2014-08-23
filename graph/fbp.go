@@ -4,10 +4,8 @@ import (
 	"github.com/oleksandr/fbp"
 )
 
-//
 // Parses a given definition in NoFlo's .fbp DSL and returns
 // unified GraphDescription structure
-//
 func ParseFBP(definition []byte) (*GraphDescription, error) {
 	// Parse .fbp file
 	parser := &fbp.Fbp{Buffer: string(definition)}

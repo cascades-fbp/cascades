@@ -1,11 +1,11 @@
 package main
 
 import (
-	"cascades/graph"
-	"cascades/log"
-	"cascades/registry"
 	"encoding/json"
 	"fmt"
+	"github.com/cascades-fbp/cascades/graph"
+	"github.com/cascades-fbp/cascades/log"
+	"github.com/cascades-fbp/cascades/registry"
 	"github.com/spf13/cobra"
 	"io/ioutil"
 	"os"
