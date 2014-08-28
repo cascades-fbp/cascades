@@ -4,8 +4,8 @@ import (
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
 	"github.com/cascades-fbp/cascades/graph"
+	"github.com/cascades-fbp/cascades/library"
 	"github.com/cascades-fbp/cascades/log"
-	"github.com/cascades-fbp/cascades/registry"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +20,7 @@ var (
 // Runtime structure corresponds to a single network
 //
 type Runtime struct {
-	registrar      registry.Registrar
+	registrar      library.Registrar
 	initialTCPPort uint
 	graph          *graph.GraphDescription
 	processes      map[string]*Process
@@ -32,7 +32,7 @@ type Runtime struct {
 //
 // Runtime constructor
 //
-func NewRuntime(registrar registry.Registrar, initialTCPPort uint) *Runtime {
+func NewRuntime(registrar library.Registrar, initialTCPPort uint) *Runtime {
 	r := &Runtime{
 		registrar:      registrar,
 		initialTCPPort: initialTCPPort,
@@ -57,7 +57,7 @@ func (self *Runtime) LoadGraph(graphfile string) error {
 }
 
 //
-// Validates the graph against registry and flattens it (unwraps subgraphs)
+// Validates the graph against library and flattens it (unwraps subgraphs)
 //
 func (self *Runtime) flattenGraph(g *graph.GraphDescription) error {
 	// copy processes map to interate over
@@ -67,7 +67,7 @@ func (self *Runtime) flattenGraph(g *graph.GraphDescription) error {
 		// Check if known component
 		e, err := self.registrar.Get(process.Component)
 		if err != nil {
-			return fmt.Errorf("Component %s not found in the registry", process.Component)
+			return fmt.Errorf("Component %s not found in the library", process.Component)
 		}
 
 		// Check if subgraph

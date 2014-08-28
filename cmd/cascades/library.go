@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cascades-fbp/cascades/graph"
-	"github.com/cascades-fbp/cascades/registry"
+	"github.com/cascades-fbp/cascades/library"
 	"github.com/codegangsta/cli"
 	"io/ioutil"
 	"os"
@@ -15,30 +15,30 @@ import (
 )
 
 // Implements catalog updating command
-func addToRegistry(c *cli.Context) {
+func addToLibrary(c *cli.Context) {
 	if len(c.Args()) != 1 {
 		fmt.Printf("Incorrect Usage. You need to provide a directory/file path as argument!\n\n")
 		cli.ShowAppHelp(c)
 		return
 	}
 
-	// read components registry file if exists
+	// read components library file if exists
 	data, err := ioutil.ReadFile(c.GlobalString("file"))
 	if err != nil && os.IsExist(err) {
 		fmt.Printf("Failed to read catalogue file: %s", err.Error())
 		return
 	}
 
-	// create JSON registry (the only implementation for now)
-	var db registry.JSONRegistry
+	// create JSON library (the only implementation for now)
+	var db library.JSONLibrary
 	if data != nil {
 		err = json.Unmarshal(data, &db)
 	}
 	if err != nil {
-		db = registry.JSONRegistry{
-			Entries: make(map[string]registry.Entry),
+		db = library.JSONLibrary{
+			Entries: make(map[string]library.Entry),
 		}
-		db.Name = "Local Components Registry"
+		db.Name = "Local Components Library"
 		db.Created = time.Now()
 	}
 
@@ -56,7 +56,7 @@ func addToRegistry(c *cli.Context) {
 			fmt.Println("")
 			return
 		}
-		addDirToRegistry(c, db, path)
+		addDirToLibrary(c, db, path)
 	} else {
 		if c.String("name") == "" {
 			fmt.Println("You need to provide a name when adding a component file")
@@ -64,7 +64,7 @@ func addToRegistry(c *cli.Context) {
 			fmt.Println("")
 			return
 		}
-		err = addFileToRegistry(c, db, c.Args().First(), c.String("name"))
+		err = addFileToLibrary(c, db, c.Args().First(), c.String("name"))
 		if err != nil {
 			fmt.Printf("Failed to add a component: %s", err.Error())
 			fmt.Println("")
@@ -86,7 +86,7 @@ func addToRegistry(c *cli.Context) {
 	}
 }
 
-func addDirToRegistry(c *cli.Context, r registry.Registrar, dir string) {
+func addDirToLibrary(c *cli.Context, r library.Registrar, dir string) {
 	fmt.Printf("Walking components directory: %s\n", dir)
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -100,7 +100,7 @@ func addDirToRegistry(c *cli.Context, r registry.Registrar, dir string) {
 		name = strings.TrimSuffix(name, ".fbp")
 		name = strings.TrimSuffix(name, ".json")
 		name = strings.TrimSuffix(name, ".exe")
-		err = addFileToRegistry(c, r, path, name)
+		err = addFileToLibrary(c, r, path, name)
 		if err != nil {
 			fmt.Printf("Error adding to registry: %s", err.Error())
 		}
@@ -110,8 +110,8 @@ func addDirToRegistry(c *cli.Context, r registry.Registrar, dir string) {
 	fmt.Println("DONE")
 }
 
-func addFileToRegistry(c *cli.Context, r registry.Registrar, file string, name string) error {
-	var entry *registry.Entry
+func addFileToLibrary(c *cli.Context, r library.Registrar, file string, name string) error {
+	var entry *library.Entry
 	if strings.HasSuffix(file, ".fbp") {
 		// adding a compsite component (subgraph) in .fbp format
 		data, err := ioutil.ReadFile(file)
@@ -173,19 +173,19 @@ func addFileToRegistry(c *cli.Context, r registry.Registrar, file string, name s
 	return nil
 }
 
-func graphToEntry(g *graph.GraphDescription, path string, r registry.Registrar) (*registry.Entry, error) {
-	entry := &registry.Entry{
+func graphToEntry(g *graph.GraphDescription, path string, r library.Registrar) (*library.Entry, error) {
+	entry := &library.Entry{
 		Executable:  path,
 		Description: g.Properties["name"],
-		Inports:     []registry.EntryPort{},
-		Outports:    []registry.EntryPort{},
+		Inports:     []library.EntryPort{},
+		Outports:    []library.EntryPort{},
 	}
 
 	for _, e := range g.Inports {
 		parts := strings.SplitN(e.Private, ".", 2)
 		rec, err := r.Get(g.Processes[parts[0]].Component)
 		if err != nil {
-			return nil, fmt.Errorf("Component %s not found in registry", parts[0])
+			return nil, fmt.Errorf("Component %s not found in library", parts[0])
 		}
 		port, found := rec.FindInport(strings.ToLower(parts[1]))
 		if !found {
@@ -199,7 +199,7 @@ func graphToEntry(g *graph.GraphDescription, path string, r registry.Registrar) 
 		parts := strings.SplitN(e.Private, ".", 2)
 		rec, err := r.Get(g.Processes[parts[0]].Component)
 		if err != nil {
-			return nil, fmt.Errorf("Component %s not found in registry", parts[0])
+			return nil, fmt.Errorf("Component %s not found in library", parts[0])
 		}
 		port, found := rec.FindOutport(strings.ToLower(parts[1]))
 		if !found {

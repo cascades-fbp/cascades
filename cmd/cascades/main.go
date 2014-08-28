@@ -13,8 +13,8 @@ func main() {
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "file, f",
-			Value: "registry.json",
-			Usage: "components registry file",
+			Value: "library.json",
+			Usage: "components library file",
 		},
 		cli.BoolFlag{
 			Name:  "debug, d",
@@ -39,13 +39,13 @@ func main() {
 			},
 		},
 		{
-			Name:  "registry",
-			Usage: "Manage a registry of components",
+			Name:  "library",
+			Usage: "Manage a library of components",
 			Subcommands: []cli.Command{
 				{
 					Name:   "add",
-					Usage:  "updates a registry with component(s) form a given path (either directory with components  or component file)",
-					Action: addToRegistry,
+					Usage:  "updates a library with component(s) form a given path (either directory with components  or component file)",
+					Action: addToLibrary,
 					Flags: []cli.Flag{
 						cli.StringFlag{
 							Name:  "name",
@@ -54,7 +54,7 @@ func main() {
 						},
 						cli.BoolFlag{
 							Name:  "force",
-							Usage: "enforces updating a component entry in the registry is it already exists",
+							Usage: "enforces updating a component entry in the library if it already exists",
 						},
 					},
 				},

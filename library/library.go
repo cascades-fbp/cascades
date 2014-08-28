@@ -1,4 +1,4 @@
-package registry
+package library
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ var (
 )
 
 //
-// Defines the interface of components registry
+// Defines the interface of components library
 //
 type Registrar interface {
 	Add(entry Entry)

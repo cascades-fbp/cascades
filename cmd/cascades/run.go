@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cascades-fbp/cascades/registry"
+	"github.com/cascades-fbp/cascades/library"
 	"github.com/cascades-fbp/cascades/runtime"
 	"github.com/codegangsta/cli"
 	"io/ioutil"
@@ -18,13 +18,13 @@ func run(c *cli.Context) {
 		return
 	}
 
-	// read components registry file if exists
+	// read components library file if exists
 	data, err := ioutil.ReadFile(c.GlobalString("file"))
 	if err != nil {
 		fmt.Printf("Failed to read catalogue file: %s", err.Error())
 		return
 	}
-	var db registry.JSONRegistry
+	var db library.JSONLibrary
 	err = json.Unmarshal(data, &db)
 	if err != nil {
 		fmt.Printf("Failed to parse catalogue file: %s", err.Error())
