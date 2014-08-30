@@ -69,6 +69,11 @@ func main() {
 					Value: "0.0.0.0:7878",
 					Usage: "binding address for the server",
 				},
+				cli.StringFlag{
+					Name:  "static",
+					Value: "static",
+					Usage: "root directory with static resources (will be mounted as /static/)",
+				},
 			},
 			Action: serve,
 		},

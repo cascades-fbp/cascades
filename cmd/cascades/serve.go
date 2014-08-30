@@ -1,9 +1,25 @@
 package main
 
 import (
+	"fmt"
+	"github.com/cascades-fbp/cascades/server"
 	"github.com/codegangsta/cli"
+	"os"
+	"os/signal"
 )
 
 func serve(c *cli.Context) {
-	println("serve:", c.Args().First())
+	restfulAPI := server.NewRESTfulAPI()
+	go restfulAPI.Start(c.String("addr"), c.String("static"))
+
+	// Ctrl+C handling
+	handler := make(chan os.Signal, 1)
+	signal.Notify(handler, os.Interrupt)
+	for sig := range handler {
+		if sig == os.Interrupt {
+			fmt.Println("Caught interrupt signal...")
+			break
+		}
+
+	}
 }
