@@ -1,17 +1,19 @@
 package runtime
 
-/*
 import (
 	"fmt"
+	"github.com/cascades-fbp/cascades/log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"syscall"
 	"time"
 )
 
+//
+// Start a process
+//
 func (p *Process) Start() {
-	command := []string{"/bin/bash", p.shellArgument(), fmt.Sprintf("source \"%s\" 2>/dev/null; %s", filepath.Join(p.Root, ".profile"), p.Command)}
+	command := []string{"/bin/bash", p.shellArgument(), p.Command()}
 	p.cmd = exec.Command(command[0], command[1:]...)
 	p.cmd.Dir = p.Root
 	p.cmd.Env = p.envAsArray()
@@ -25,6 +27,9 @@ func (p *Process) Start() {
 	p.cmd.Start()
 }
 
+//
+// Send signal to a process
+//
 func (p *Process) Signal(signal syscall.Signal) {
 	if p.Running() {
 		group, _ := os.FindProcess(-1 * p.Pid())
@@ -32,19 +37,30 @@ func (p *Process) Signal(signal syscall.Signal) {
 	}
 }
 
-func ShutdownProcesses(of *OutletFactory) {
-	shutdown_mutex.Lock()
-	of.SystemOutput("shutting down")
-	for name, ps := range processes {
-		of.SystemOutput(fmt.Sprintf("sending SIGTERM to %s", name))
+//
+// Shutdown the network
+//
+func (self *Runtime) Shutdown() {
+	log.SystemOutput("Shutdown...")
+
+	shutdownMutex.Lock()
+	for name, ps := range self.processes {
+		log.SystemOutput(fmt.Sprintf("sending SIGTERM to %s", name))
 		ps.Signal(syscall.SIGTERM)
 	}
+
+	if len(self.processes) == 0 {
+		self.Done <- true
+	}
+
 	go func() {
-		time.Sleep(shutdownGraceTime)
-		for name, ps := range processes {
-			of.SystemOutput(fmt.Sprintf("sending SIGKILL to %s", name))
+		time.Sleep(3 * time.Second)
+		for name, ps := range self.processes {
+			log.SystemOutput(fmt.Sprintf("sending SIGKILL to %s", name))
 			ps.Signal(syscall.SIGKILL)
 		}
+		self.Done <- true
 	}()
+
+	shutdownMutex.Unlock()
 }
-*/

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"github.com/cascades-fbp/cascades/registry"
+	"github.com/cascades-fbp/cascades/library"
 )
 
-var registryEntry = &registry.Entry{
+var registryEntry = &library.Entry{
 	Description: "Sends out a hard-coded text, closes the out port and exits with exit code 0",
-	Outports: []registry.EntryPort{
-		registry.EntryPort{
+	Outports: []library.EntryPort{
+		library.EntryPort{
 			Name:        "OUT",
 			Type:        "all",
 			Description: "Output port for sending IPs",
