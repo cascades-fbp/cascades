@@ -299,7 +299,7 @@ func (self *Runtime) Start() {
 			delete(self.processes, name)
 			fmt.Fprintln(ps.Stdout, "Stopped")
 			//TODO: check all connections with this process and send them shutdown commands as well
-			if !ps.cmd.ProcessState.Success() {
+			if !ps.cmd.ProcessState.Success() || len(self.processes) == 0 {
 				self.Shutdown()
 			}
 
