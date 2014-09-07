@@ -127,6 +127,8 @@ func main() {
 		}
 
 		sender.SendMultipart(runtime.NewOpenBracket(), 0)
+		sender.SendMultipart(ip, zmq.NOBLOCK)
+
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
 			sender.SendMultipart(runtime.NewPacket(scanner.Bytes()), 0)
@@ -135,8 +137,7 @@ func main() {
 			errorSocket.SendMultipart(runtime.NewPacket([]byte(err.Error())), zmq.NOBLOCK)
 		}
 		f.Close()
-		sender.SendMultipart(runtime.NewCloseBracket(), 0)
 
-		sender.SendMultipart(ip, zmq.NOBLOCK)
+		sender.SendMultipart(runtime.NewCloseBracket(), 0)
 	}
 }

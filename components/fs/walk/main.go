@@ -9,14 +9,15 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"strings"
+	"path/filepath"
 	"syscall"
 	"time"
 )
 
 var (
-	inputEndpoint  = flag.String("port.in", "", "Component's input port endpoint")
-	outputEndpoint = flag.String("port.out", "", "Component's output port #1 endpoint")
+	inputEndpoint  = flag.String("port.dir", "", "Component's input port endpoint")
+	outputEndpoint = flag.String("port.file", "", "Component's output port endpoint")
+	errorEndpoint  = flag.String("port.err", "", "Component's error port endpoint")
 	json           = flag.Bool("json", false, "Print component documentation in JSON")
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 )
@@ -46,12 +47,6 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	outports := strings.Split(*outputEndpoint, ",")
-	if len(outports) == 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
 	var err error
 	context, _ := zmq.NewContext()
 	defer context.Close()
@@ -69,26 +64,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	//  Socket to send messages
-	var (
-		socket *zmq.Socket
-	)
-	sendSockets := []*zmq.Socket{}
-	for i, endpoint := range outports {
-		socket, err = context.NewSocket(zmq.PUSH)
-		if err != nil {
-			fmt.Println("Error creating socket:", err.Error())
-			os.Exit(1)
-		}
-		//defer socket.Close()
-		endpoint = strings.TrimSpace(endpoint)
-		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
-		err = socket.Connect(endpoint)
-		if err != nil {
-			fmt.Println("Error connecting to socket:", err.Error())
-			os.Exit(1)
-		}
-		sendSockets = append(sendSockets, socket)
+	//  Socket to send messages to task sink
+	sender, err := context.NewSocket(zmq.PUSH)
+	if err != nil {
+		fmt.Println("Error creating socket:", err.Error())
+		os.Exit(1)
+	}
+	defer sender.Close()
+	err = sender.Connect(*outputEndpoint)
+	if err != nil {
+		fmt.Println("Error connecting to socket:", err.Error())
+		os.Exit(1)
+	}
+
+	var errorSocket *zmq.Socket
+	if *errorEndpoint != "" {
+		errorSocket, _ = context.NewSocket(zmq.PUSH)
+		defer errorSocket.Close()
+		errorSocket.Connect(*errorEndpoint)
 	}
 
 	// Ctrl+C handling
@@ -104,7 +97,7 @@ func main() {
 	}()
 
 	// Monitoring setup
-	err = runtime.SetupShutdownByDisconnect(context, receiver, "splitter.in", ch)
+	err = runtime.SetupShutdownByDisconnect(context, receiver, "fs-walk.dir", ch)
 	if err != nil {
 		log.Println("Failed to setup monitoring:", err.Error())
 		os.Exit(1)
@@ -112,23 +105,32 @@ func main() {
 
 	log.Println("Started")
 
-	//  Process tasks forever
 	for {
-		//log.Println("Waiting for IP...")
 		ip, err := receiver.RecvMultipart(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
-			log.Println("Received invalid IP")
 			continue
 		}
 
-		//log.Println("Received IP:", string(ip[1]))
-		for _, socket = range sendSockets {
-			socket.SendMultipart(ip, 0)
+		dir := string(ip[1])
+		err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() {
+				sender.SendMultipart(runtime.NewPacket([]byte(path)), 0)
+			}
+			return nil
+		})
+		if err != nil {
+			log.Printf("ERROR openning file %s: %s", dir, err.Error())
+			if errorSocket != nil {
+				errorSocket.SendMultipart(runtime.NewPacket([]byte(err.Error())), zmq.NOBLOCK)
+			}
+			continue
 		}
-		//log.Println("IP sent to all outputs")
 	}
 }
