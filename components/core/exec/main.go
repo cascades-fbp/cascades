@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
@@ -118,6 +119,7 @@ func main() {
 			}
 			continue
 		}
+		out = bytes.Replace(out, []byte("\n"), []byte(""), -1)
 		log.Println(string(out))
 		if outSock != nil {
 			outSock.SendMultipart(runtime.NewPacket(out), 0)
