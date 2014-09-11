@@ -21,13 +21,13 @@ func run(c *cli.Context) {
 	// read components library file if exists
 	data, err := ioutil.ReadFile(c.GlobalString("file"))
 	if err != nil {
-		fmt.Printf("Failed to read catalogue file: %s", err.Error())
+		fmt.Printf("Failed to read catalogue file: %s\n", err.Error())
 		return
 	}
 	var db library.JSONLibrary
 	err = json.Unmarshal(data, &db)
 	if err != nil {
-		fmt.Printf("Failed to parse catalogue file: %s", err.Error())
+		fmt.Printf("Failed to parse catalogue file: %s\n", err.Error())
 		return
 	}
 
@@ -36,7 +36,7 @@ func run(c *cli.Context) {
 	scheduler.Debug = c.GlobalBool("debug")
 	err = scheduler.LoadGraph(c.Args().First())
 	if err != nil {
-		fmt.Printf("Failed to load/flatten graph: %s", err.Error())
+		fmt.Printf("Failed to load/flatten graph: %s\n", err.Error())
 		return
 	}
 
