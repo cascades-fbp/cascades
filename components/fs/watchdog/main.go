@@ -4,30 +4,63 @@ import (
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
 	"github.com/howeyc/fsnotify"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
-	"time"
 )
 
 var (
+	// Flafs
 	inputEndpoint  = flag.String("port.dir", "", "Component's input port endpoint")
 	outputEndpoint = flag.String("port.created", "", "Component's output port endpoint")
 	errorEndpoint  = flag.String("port.err", "", "Component's error port endpoint")
-	json           = flag.Bool("json", false, "Print component documentation in JSON")
+	jsonFlag       = flag.Bool("json", false, "Print component documentation in JSON")
 	debug          = flag.Bool("debug", false, "Enable debug mode")
+
+	// Internal
+	context                  *zmq.Context
+	inPort, outPort, errPort *zmq.Socket
+	ip                       [][]byte
+	err                      error
 )
 
-func assertError(err error) {
-	if err != nil {
-		fmt.Println("ERROR:", err.Error())
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
 		os.Exit(1)
 	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+func openPorts() {
+	context, err = zmq.NewContext()
+	utils.AssertError(err)
+
+	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
+	utils.AssertError(err)
+
+	if *errorEndpoint != "" {
+		errPort, err = utils.CreateOutputPort(context, *errorEndpoint)
+		utils.AssertError(err)
+	}
+}
+
+func closePorts() {
+	inPort.Close()
+	if outPort != nil {
+		outPort.Close()
+	}
+	if errPort != nil {
+		errPort.Close()
+	}
+	context.Close()
 }
 
 func isDir(path string) bool {
@@ -41,19 +74,10 @@ func isDir(path string) bool {
 func main() {
 	flag.Parse()
 
-	if *json {
+	if *jsonFlag {
 		doc, _ := registryEntry.JSON()
 		fmt.Println(string(doc))
 		os.Exit(0)
-	}
-
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
 	}
 
 	log.SetFlags(0)
@@ -63,51 +87,23 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	var err error
-	context, _ := zmq.NewContext()
-	defer context.Close()
+	validateArgs()
 
-	//  Socket to receive messages on
-	receiver, err := context.NewSocket(zmq.PULL)
-	assertError(err)
-	defer receiver.Close()
-	err = receiver.Bind(*inputEndpoint)
-	assertError(err)
+	openPorts()
+	defer closePorts()
 
-	var errorSocket *zmq.Socket
-	if *errorEndpoint != "" {
-		errorSocket, _ = context.NewSocket(zmq.PUSH)
-		defer errorSocket.Close()
-		errorSocket.Connect(*errorEndpoint)
-	}
-
-	// Ctrl+C handling
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		for _ = range ch {
-			log.Println("Give 0MQ time to deliver before stopping...")
-			time.Sleep(1e9)
-			log.Println("Stopped")
-			os.Exit(0)
-		}
-	}()
-
-	//TODO: monitor for input port, close socket when disconnected
+	utils.HandleInterruption()
 
 	// Setup watcher
 	watcher, err := fsnotify.NewWatcher()
-	assertError(err)
+	utils.AssertError(err)
 	defer watcher.Close()
 
 	// Process events
 	go func() {
 		//  Socket to send messages to task sink
-		sender, err := context.NewSocket(zmq.PUSH)
-		assertError(err)
-		defer sender.Close()
-		err = sender.Connect(*outputEndpoint)
-		assertError(err)
+		outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+		utils.AssertError(err)
 		for {
 			select {
 			case ev := <-watcher.Event:
@@ -119,8 +115,12 @@ func main() {
 								return err
 							}
 							if info.IsDir() {
+								// we need to watch every subdirectory explicitely
 								watcher.Watch(path)
 								log.Println("Added to watch:", path)
+							} else {
+								// Consider every file found in the created directory as just created
+								outPort.SendMultipart(runtime.NewPacket([]byte(path)), 0)
 							}
 							return nil
 						})
@@ -128,7 +128,7 @@ func main() {
 							log.Println("Error walking directory:", err.Error())
 						}
 					} else {
-						sender.SendMultipart(runtime.NewPacket([]byte(ev.Name)), 0)
+						outPort.SendMultipart(runtime.NewPacket([]byte(ev.Name)), 0)
 					}
 				} else if ev.IsDelete() {
 					watcher.RemoveWatch(ev.Name)
@@ -143,7 +143,7 @@ func main() {
 	// Main loop
 	log.Println("Started")
 	for {
-		ip, err := receiver.RecvMultipart(0)
+		ip, err := inPort.RecvMultipart(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -165,8 +165,8 @@ func main() {
 		})
 		if err != nil {
 			log.Printf("ERROR openning file %s: %s", dir, err.Error())
-			if errorSocket != nil {
-				errorSocket.SendMultipart(runtime.NewPacket([]byte(err.Error())), zmq.NOBLOCK)
+			if errPort != nil {
+				errPort.SendMultipart(runtime.NewPacket([]byte(err.Error())), 0)
 			}
 			continue
 		}

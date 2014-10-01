@@ -5,26 +5,26 @@ import (
 )
 
 var registryEntry = &library.Entry{
-	Description: "Fill the template string with received data from the input port and pass it to the output port",
+	Description: "Uses a given RegEx with named capturing groups for analyzing an input string. Outputs the matched map in JSON",
 	Inports: []library.EntryPort{
 		library.EntryPort{
-			Name:        "TPL",
+			Name:        "PATTERN",
 			Type:        "string",
-			Description: "Port for configuring component with a template",
+			Description: "Port for RegExp patte with named capturing groups",
 			Required:    true,
 		},
 		library.EntryPort{
 			Name:        "IN",
-			Type:        "all",
+			Type:        "string",
 			Description: "Input port for receiving IPs",
 			Required:    true,
 		},
 	},
 	Outports: []library.EntryPort{
 		library.EntryPort{
-			Name:        "OUT",
-			Type:        "all",
-			Description: "Output port for sending IPs",
+			Name:        "MAP",
+			Type:        "json",
+			Description: "Output port for captured submatching map in JSON",
 			Required:    true,
 		},
 	},

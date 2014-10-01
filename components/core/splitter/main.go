@@ -4,32 +4,29 @@ import (
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
-	"time"
 )
 
 var (
+	// Flags
 	inputEndpoint  = flag.String("port.in", "", "Component's input port endpoint")
 	outputEndpoint = flag.String("port.out", "", "Component's output port #1 endpoint")
-	json           = flag.Bool("json", false, "Print component documentation in JSON")
+	jsonFlag       = flag.Bool("json", false, "Print component documentation in JSON")
 	debug          = flag.Bool("debug", false, "Enable debug mode")
+
+	// Internal
+	context      *zmq.Context
+	outPortArray []*zmq.Socket
+	inPort, port *zmq.Socket
+	err          error
 )
 
-func main() {
-	flag.Parse()
-
-	if *json {
-		doc, _ := registryEntry.JSON()
-		fmt.Println(string(doc))
-		os.Exit(0)
-	}
-
+func validateArgs() {
 	if *inputEndpoint == "" {
 		flag.Usage()
 		os.Exit(1)
@@ -37,6 +34,46 @@ func main() {
 	if *outputEndpoint == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+}
+
+func openPorts() {
+	outports := strings.Split(*outputEndpoint, ",")
+	if len(outports) == 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	context, err = zmq.NewContext()
+	utils.AssertError(err)
+
+	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
+	utils.AssertError(err)
+
+	outPortArray = []*zmq.Socket{}
+	for i, endpoint := range outports {
+		endpoint = strings.TrimSpace(endpoint)
+		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
+		port, err = utils.CreateOutputPort(context, endpoint)
+		outPortArray = append(outPortArray, port)
+	}
+}
+
+func closePorts() {
+	inPort.Close()
+	for _, port = range outPortArray {
+		port.Close()
+	}
+	context.Close()
+}
+
+func main() {
+	flag.Parse()
+
+	if *jsonFlag {
+		doc, _ := registryEntry.JSON()
+		fmt.Println(string(doc))
+		os.Exit(0)
 	}
 
 	log.SetFlags(0)
@@ -46,76 +83,18 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	outports := strings.Split(*outputEndpoint, ",")
-	if len(outports) == 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
+	validateArgs()
 
-	var err error
-	context, _ := zmq.NewContext()
-	defer context.Close()
+	openPorts()
+	defer closePorts()
 
-	//  Socket to receive messages on
-	receiver, err := context.NewSocket(zmq.PULL)
-	if err != nil {
-		fmt.Println("Error creating socket:", err.Error())
-		os.Exit(1)
-	}
-	defer receiver.Close()
-	err = receiver.Bind(*inputEndpoint)
-	if err != nil {
-		fmt.Println("Error binding socket:", err.Error())
-		os.Exit(1)
-	}
+	ch := utils.HandleInterruption()
+	err = runtime.SetupShutdownByDisconnect(context, inPort, "splitter.in", ch)
+	utils.AssertError(err)
 
-	//  Socket to send messages
-	var (
-		socket *zmq.Socket
-	)
-	sendSockets := []*zmq.Socket{}
-	for i, endpoint := range outports {
-		socket, err = context.NewSocket(zmq.PUSH)
-		if err != nil {
-			fmt.Println("Error creating socket:", err.Error())
-			os.Exit(1)
-		}
-		//defer socket.Close()
-		endpoint = strings.TrimSpace(endpoint)
-		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
-		err = socket.Connect(endpoint)
-		if err != nil {
-			fmt.Println("Error connecting to socket:", err.Error())
-			os.Exit(1)
-		}
-		sendSockets = append(sendSockets, socket)
-	}
-
-	// Ctrl+C handling
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		for _ = range ch {
-			log.Println("Give 0MQ time to deliver before stopping...")
-			time.Sleep(1e9)
-			log.Println("Stopped")
-			os.Exit(0)
-		}
-	}()
-
-	// Monitoring setup
-	err = runtime.SetupShutdownByDisconnect(context, receiver, "splitter.in", ch)
-	if err != nil {
-		log.Println("Failed to setup monitoring:", err.Error())
-		os.Exit(1)
-	}
-
-	log.Println("Started")
-
-	//  Process tasks forever
+	log.Println("Started...")
 	for {
-		//log.Println("Waiting for IP...")
-		ip, err := receiver.RecvMultipart(0)
+		ip, err := inPort.RecvMultipart(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -124,11 +103,8 @@ func main() {
 			log.Println("Received invalid IP")
 			continue
 		}
-
-		//log.Println("Received IP:", string(ip[1]))
-		for _, socket = range sendSockets {
-			socket.SendMultipart(ip, 0)
+		for _, port = range outPortArray {
+			port.SendMultipart(ip, 0)
 		}
-		//log.Println("IP sent to all outputs")
 	}
 }

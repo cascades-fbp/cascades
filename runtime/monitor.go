@@ -15,13 +15,13 @@ const MONITOR_EVENTS zmq.Event = zmq.EVENT_CONNECTED | zmq.EVENT_LISTENING |
 	zmq.EVENT_DISCONNECTED
 
 //
-// Create a monitoring socket using given context and connect to a given socket to be monitored.
+// Creates a monitoring socket using given context and connects to a given socket to be monitored.
 // Returns a channel to receive monitoring events.
 // See event definitions here: http://api.zeromq.org/3-2:zmq-socket-monitor
 //
 func MonitorSocket(context *zmq.Context, socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
+	endpoint := fmt.Sprintf("inproc://%v.%v.%v", name, os.Getpid(), time.Now().UnixNano())
 	monCh := make(chan zmq.Event, 512) // make a buffered channel in case of heavy network activity
-	endpoint := fmt.Sprintf("inproc://%v.%v", name, time.Now().UnixNano())
 	go func() {
 		monSock, err := context.NewSocket(zmq.PAIR)
 		if err != nil {

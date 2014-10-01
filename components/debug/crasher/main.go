@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
@@ -12,21 +13,19 @@ import (
 )
 
 var (
-	inputEndpoint  = flag.String("port.in", "", "Component's output port endpoint")
+	// Flags
+	inputEndpoint  = flag.String("port.in", "", "Component's input port endpoint")
 	outputEndpoint = flag.String("port.out", "", "Component's output port endpoint")
-	json           = flag.Bool("json", false, "Print component documentation in JSON")
+	jsonFlag       = flag.Bool("json", false, "Print component documentation in JSON")
 	debug          = flag.Bool("debug", false, "Enable debug mode")
+
+	// Internal
+	context         *zmq.Context
+	inPort, outPort *zmq.Socket
+	err             error
 )
 
-func main() {
-	flag.Parse()
-
-	if *json {
-		doc, _ := registryEntry.JSON()
-		fmt.Println(string(doc))
-		os.Exit(0)
-	}
-
+func validateArgs() {
 	if *inputEndpoint == "" {
 		flag.Usage()
 		os.Exit(1)
@@ -34,6 +33,33 @@ func main() {
 	if *outputEndpoint == "" {
 		flag.Usage()
 		os.Exit(1)
+	}
+}
+
+func openPorts() {
+	context, err = zmq.NewContext()
+	utils.AssertError(err)
+
+	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
+	utils.AssertError(err)
+
+	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	utils.AssertError(err)
+}
+
+func closePorts() {
+	inPort.Close()
+	outPort.Close()
+	context.Close()
+}
+
+func main() {
+	flag.Parse()
+
+	if *jsonFlag {
+		doc, _ := registryEntry.JSON()
+		fmt.Println(string(doc))
+		os.Exit(0)
 	}
 
 	log.SetFlags(0)
@@ -43,40 +69,31 @@ func main() {
 		log.SetOutput(ioutil.Discard)
 	}
 
-	context, _ := zmq.NewContext()
-	defer context.Close()
+	validateArgs()
 
-	//  Socket to receive messages on
-	receiver, _ := context.NewSocket(zmq.PULL)
-	defer receiver.Close()
-	receiver.Bind(*inputEndpoint)
+	openPorts()
+	defer closePorts()
 
-	//  Socket to send messages to task sink
-	sender, _ := context.NewSocket(zmq.PUSH)
-	defer sender.Close()
-	sender.Connect(*outputEndpoint)
+	ch := utils.HandleInterruption()
+	err = runtime.SetupShutdownByDisconnect(context, inPort, "crasher.in", ch)
+	utils.AssertError(err)
 
 	go func() {
 		log.Println("Waiting for a crash")
 		time.Sleep(3 * time.Second)
-		sender.Close()
-		time.Sleep(2 * time.Second)
 		os.Exit(0)
 	}()
 
-	log.Println("Started")
-
-	// Process tasks forever
+	log.Println("Started...")
 	for {
-		ip, _ := receiver.RecvMultipart(0)
-		if !runtime.IsPacket(ip) {
-			log.Println("Received invalid IP. Ignoring...")
+		ip, err := inPort.RecvMultipart(0)
+		if err != nil {
+			log.Println("Error receiving message:", err.Error())
 			continue
 		}
-		sender.SendMultipart(ip, zmq.NOBLOCK)
+		if !runtime.IsValidIP(ip) {
+			continue
+		}
+		outPort.SendMultipart(ip, 0)
 	}
-
-	time.Sleep(1e9) //  Give 0MQ time to deliver: one second ==  1e9 ns
-
-	log.Println("Stopped")
 }

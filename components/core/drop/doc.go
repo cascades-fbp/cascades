@@ -5,7 +5,7 @@ import (
 )
 
 var registryEntry = &library.Entry{
-	Description: "Packets dropper: simply consumes IPs from the input port and 'deletes' them.",
+	Description: "Packets dropper. Simply consumes IPs from the input port and 'deletes' them.",
 	Inports: []library.EntryPort{
 		library.EntryPort{
 			Name:        "IN",

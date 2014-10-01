@@ -9,7 +9,7 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "cascades"
 	app.Usage = "A Cascades FBP runtime/scheduler for the FBP applications."
-	app.Version = "0.0.1"
+	app.Version = "0.1.0"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "file, f",
