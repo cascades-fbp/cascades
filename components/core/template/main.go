@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"text/template"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -23,7 +24,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context                  *zmq.Context
 	tplPort, inPort, outPort *zmq.Socket
 	err                      error
 )
@@ -44,16 +44,13 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
+	tplPort, err = utils.CreateInputPort(*tplEndpoint)
 	utils.AssertError(err)
 
-	tplPort, err = utils.CreateInputPort(context, *tplEndpoint)
+	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	outPort, err = utils.CreateOutputPort(*outputEndpoint)
 	utils.AssertError(err)
 }
 
@@ -61,7 +58,7 @@ func closePorts() {
 	tplPort.Close()
 	inPort.Close()
 	outPort.Close()
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -86,7 +83,7 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, inPort, "template.in", ch)
+	err = runtime.SetupShutdownByDisconnect(inPort, "template.in", ch)
 	utils.AssertError(err)
 
 	log.Println("Waiting for template...")
@@ -95,7 +92,7 @@ func main() {
 		ip [][]byte
 	)
 	for {
-		ip, err = tplPort.RecvMultipart(0)
+		ip, err = tplPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -119,7 +116,7 @@ func main() {
 		data map[string]interface{}
 	)
 	for {
-		ip, err := inPort.RecvMultipart(0)
+		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -141,6 +138,6 @@ func main() {
 			continue
 		}
 
-		outPort.SendMultipart(runtime.NewPacket(buf.Bytes()), 0)
+		outPort.SendMessage(runtime.NewPacket(buf.Bytes()))
 	}
 }

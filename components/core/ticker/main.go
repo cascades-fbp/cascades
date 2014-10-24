@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"time"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -20,7 +21,6 @@ var (
 	debug            = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context               *zmq.Context
 	intervalPort, outPort *zmq.Socket
 	err                   error
 )
@@ -37,20 +37,17 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
+	intervalPort, err = utils.CreateInputPort(*intervalEndpoint)
 	utils.AssertError(err)
 
-	intervalPort, err = utils.CreateInputPort(context, *intervalEndpoint)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	outPort, err = utils.CreateOutputPort(*outputEndpoint)
 	utils.AssertError(err)
 }
 
 func closePorts() {
 	intervalPort.Close()
 	outPort.Close()
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -77,7 +74,7 @@ func main() {
 	log.Println("Wait for configuration IP...")
 	var interval time.Duration
 	for {
-		ip, err := intervalPort.RecvMultipart(0)
+		ip, err := intervalPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving IP:", err.Error())
 			continue
@@ -101,6 +98,6 @@ func main() {
 	for v := range ticker.C {
 		msg := fmt.Sprintf("%v", v.Unix())
 		log.Println(msg)
-		outPort.SendMultipart(runtime.NewPacket([]byte(msg)), 0)
+		outPort.SendMessage(runtime.NewPacket([]byte(msg)))
 	}
 }

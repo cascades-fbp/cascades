@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -20,10 +21,9 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context       *zmq.Context
 	inPortArray   []*zmq.Socket
 	outPort, port *zmq.Socket
-	pollItems     zmq.PollItems
+	poller        *zmq.Poller
 	err           error
 )
 
@@ -45,21 +45,19 @@ func openPorts() {
 		os.Exit(1)
 	}
 
-	context, err = zmq.NewContext()
-	utils.AssertError(err)
-
 	inPortArray = []*zmq.Socket{}
-	pollItems = zmq.PollItems{}
+	poller = zmq.NewPoller()
+
 	for i, endpoint := range inports {
 		endpoint = strings.TrimSpace(endpoint)
 		log.Printf("Binding OUT[%v]=%s", i, endpoint)
-		port, err = utils.CreateInputPort(context, endpoint)
+		port, err = utils.CreateInputPort(endpoint)
 		utils.AssertError(err)
 		inPortArray = append(inPortArray, port)
-		pollItems = append(pollItems, zmq.PollItem{Socket: port, Events: zmq.POLLIN})
+		poller.Add(port, zmq.POLLIN)
 	}
 
-	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	outPort, err = utils.CreateOutputPort(*outputEndpoint)
 	utils.AssertError(err)
 }
 
@@ -67,7 +65,7 @@ func closePorts() {
 	for _, port = range inPortArray {
 		port.Close()
 	}
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -97,35 +95,30 @@ func main() {
 	var (
 		ip [][]byte
 	)
+
 	for {
-		_, err = zmq.Poll(pollItems, -1)
+		results, err := poller.Poll(-1)
 		if err != nil {
 			log.Println("Error polling ports:", err.Error())
 			continue
 		}
 
-		port = nil
-		for _, item := range pollItems {
-			if item.REvents&zmq.POLLIN != 0 {
-				port = item.Socket
-				break
+		for _, r := range results {
+			if r.Socket == nil {
+				log.Println("ERROR: could not find socket in the polling results")
+				continue
 			}
-		}
-		if port == nil {
-			log.Println("ERROR: could not find port in polling items array")
-			continue
-		}
+			ip, err = r.Socket.RecvMessageBytes(0)
+			if err != nil {
+				log.Println("Error receiving message:", err.Error())
+				continue
+			}
+			if !runtime.IsValidIP(ip) {
+				log.Println("Received invalid IP")
+				continue
+			}
 
-		ip, err = port.RecvMultipart(0)
-		if err != nil {
-			log.Println("Error receiving message:", err.Error())
-			continue
+			outPort.SendMessage(ip)
 		}
-		if !runtime.IsValidIP(ip) {
-			log.Println("Received invalid IP")
-			continue
-		}
-
-		outPort.SendMultipart(ip, 0)
 	}
 }

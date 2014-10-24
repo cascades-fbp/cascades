@@ -4,8 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"github.com/daviddengcn/go-colortext"
 	"sync"
+
+	"github.com/daviddengcn/go-colortext"
 )
 
 type LogFactory struct {

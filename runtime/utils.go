@@ -2,9 +2,10 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/cascades-fbp/cascades/graph"
 	"io/ioutil"
 	"strings"
+
+	"github.com/cascades-fbp/cascades/graph"
 )
 
 func loadGraph(graphfile string) (g *graph.GraphDescription, err error) {

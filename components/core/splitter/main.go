@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -20,7 +21,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context      *zmq.Context
 	outPortArray []*zmq.Socket
 	inPort, port *zmq.Socket
 	err          error
@@ -44,17 +44,14 @@ func openPorts() {
 		os.Exit(1)
 	}
 
-	context, err = zmq.NewContext()
-	utils.AssertError(err)
-
-	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
+	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
 	outPortArray = []*zmq.Socket{}
 	for i, endpoint := range outports {
 		endpoint = strings.TrimSpace(endpoint)
 		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
-		port, err = utils.CreateOutputPort(context, endpoint)
+		port, err = utils.CreateOutputPort(endpoint)
 		outPortArray = append(outPortArray, port)
 	}
 }
@@ -64,7 +61,7 @@ func closePorts() {
 	for _, port = range outPortArray {
 		port.Close()
 	}
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -89,12 +86,12 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, inPort, "splitter.in", ch)
+	err = runtime.SetupShutdownByDisconnect(inPort, "splitter.in", ch)
 	utils.AssertError(err)
 
 	log.Println("Started...")
 	for {
-		ip, err := inPort.RecvMultipart(0)
+		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -104,7 +101,7 @@ func main() {
 			continue
 		}
 		for _, port = range outPortArray {
-			port.SendMultipart(ip, 0)
+			port.SendMessage(ip)
 		}
 	}
 }

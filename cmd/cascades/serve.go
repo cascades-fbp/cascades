@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"github.com/cascades-fbp/cascades/server"
-	"github.com/codegangsta/cli"
 	"os"
 	"os/signal"
+
+	"github.com/cascades-fbp/cascades/server"
+	"github.com/codegangsta/cli"
 )
 
 func serve(c *cli.Context) {

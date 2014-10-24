@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"time"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -20,7 +21,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context         *zmq.Context
 	inPort, outPort *zmq.Socket
 	err             error
 )
@@ -37,20 +37,17 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
+	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	outPort, err = utils.CreateOutputPort(*outputEndpoint)
 	utils.AssertError(err)
 }
 
 func closePorts() {
 	inPort.Close()
 	outPort.Close()
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -75,7 +72,7 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, inPort, "crasher.in", ch)
+	err = runtime.SetupShutdownByDisconnect(inPort, "crasher.in", ch)
 	utils.AssertError(err)
 
 	go func() {
@@ -86,7 +83,7 @@ func main() {
 
 	log.Println("Started...")
 	for {
-		ip, err := inPort.RecvMultipart(0)
+		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -94,6 +91,6 @@ func main() {
 		if !runtime.IsValidIP(ip) {
 			continue
 		}
-		outPort.SendMultipart(ip, 0)
+		outPort.SendMessage(ip)
 	}
 }

@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -22,7 +23,6 @@ var (
 	debug           = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context                      *zmq.Context
 	patternPort, inPort, mapPort *zmq.Socket
 	err                          error
 )
@@ -63,16 +63,13 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
+	patternPort, err = utils.CreateInputPort(*patternEndpoint)
 	utils.AssertError(err)
 
-	patternPort, err = utils.CreateInputPort(context, *patternEndpoint)
+	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
-	utils.AssertError(err)
-
-	mapPort, err = utils.CreateOutputPort(context, *mapEndpoint)
+	mapPort, err = utils.CreateOutputPort(*mapEndpoint)
 	utils.AssertError(err)
 }
 
@@ -80,7 +77,7 @@ func closePorts() {
 	patternPort.Close()
 	inPort.Close()
 	mapPort.Close()
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -105,7 +102,7 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, inPort, "submatch.in", ch)
+	err = runtime.SetupShutdownByDisconnect(inPort, "submatch.in", ch)
 	utils.AssertError(err)
 
 	log.Println("Waiting for pattern...")
@@ -114,7 +111,7 @@ func main() {
 		ip      [][]byte
 	)
 	for {
-		ip, err = patternPort.RecvMultipart(0)
+		ip, err = patternPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -130,7 +127,7 @@ func main() {
 
 	log.Println("Started...")
 	for {
-		ip, err = inPort.RecvMultipart(0)
+		ip, err = inPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -148,6 +145,6 @@ func main() {
 			log.Println(err.Error())
 		}
 
-		mapPort.SendMultipart(runtime.NewPacket(data), 0)
+		mapPort.SendMessage(runtime.NewPacket(data))
 	}
 }

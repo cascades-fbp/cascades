@@ -3,12 +3,14 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cascades-fbp/cascades/library"
-	"github.com/cascades-fbp/cascades/runtime"
-	"github.com/codegangsta/cli"
 	"io/ioutil"
 	"os"
 	"os/signal"
+
+	"github.com/cascades-fbp/cascades/library"
+	"github.com/cascades-fbp/cascades/runtime"
+	"github.com/codegangsta/cli"
+	zmq "github.com/pebbe/zmq4"
 )
 
 func run(c *cli.Context) {
@@ -59,6 +61,7 @@ func run(c *cli.Context) {
 		case <-ch:
 			go scheduler.Shutdown()
 		case <-scheduler.Done:
+			zmq.Term()
 			fmt.Println("Stopped")
 			os.Exit(0)
 		}

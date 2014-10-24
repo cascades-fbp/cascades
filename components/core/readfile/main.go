@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -21,7 +22,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context                    *zmq.Context
 	filePort, outPort, errPort *zmq.Socket
 	err                        error
 )
@@ -38,17 +38,14 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
+	filePort, err = utils.CreateInputPort(*fileEndpoint)
 	utils.AssertError(err)
 
-	filePort, err = utils.CreateInputPort(context, *fileEndpoint)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	outPort, err = utils.CreateOutputPort(*outputEndpoint)
 	utils.AssertError(err)
 
 	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort(context, *errorEndpoint)
+		errPort, err = utils.CreateOutputPort(*errorEndpoint)
 		utils.AssertError(err)
 	}
 }
@@ -59,7 +56,7 @@ func closePorts() {
 	if errPort != nil {
 		errPort.Close()
 	}
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -84,12 +81,12 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, filePort, "readfile.file", ch)
+	err = runtime.SetupShutdownByDisconnect(filePort, "readfile.file", ch)
 	utils.AssertError(err)
 
 	log.Println("Started...")
 	for {
-		ip, err := filePort.RecvMultipart(0)
+		ip, err := filePort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -103,23 +100,23 @@ func main() {
 		if err != nil {
 			log.Printf("ERROR openning file %s: %s", filepath, err.Error())
 			if errPort != nil {
-				errPort.SendMultipart(runtime.NewPacket([]byte(err.Error())), 0)
+				errPort.SendMessage(runtime.NewPacket([]byte(err.Error())))
 			}
 			continue
 		}
 
-		outPort.SendMultipart(runtime.NewOpenBracket(), 0)
-		outPort.SendMultipart(ip, 0)
+		outPort.SendMessage(runtime.NewOpenBracket())
+		outPort.SendMessage(ip)
 
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
-			outPort.SendMultipart(runtime.NewPacket(scanner.Bytes()), 0)
+			outPort.SendMessage(runtime.NewPacket(scanner.Bytes()))
 		}
 		if err = scanner.Err(); err != nil && errPort != nil {
-			errPort.SendMultipart(runtime.NewPacket([]byte(err.Error())), 0)
+			errPort.SendMessage(runtime.NewPacket([]byte(err.Error())))
 		}
 		f.Close()
 
-		outPort.SendMultipart(runtime.NewCloseBracket(), 0)
+		outPort.SendMessage(runtime.NewCloseBracket())
 	}
 }

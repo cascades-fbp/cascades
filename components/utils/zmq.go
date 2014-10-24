@@ -2,8 +2,9 @@ package utils
 
 import (
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
 	"os"
+
+	zmq "github.com/pebbe/zmq4"
 )
 
 // Print the error message if err is not nil & exist with status code 1
@@ -15,8 +16,8 @@ func AssertError(err error) {
 }
 
 // Create a ZMQ PULL socket & bind to a given endpoint
-func CreateInputPort(ctx *zmq.Context, endpoint string) (socket *zmq.Socket, err error) {
-	socket, err = ctx.NewSocket(zmq.PULL)
+func CreateInputPort(endpoint string) (socket *zmq.Socket, err error) {
+	socket, err = zmq.NewSocket(zmq.PULL)
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +29,8 @@ func CreateInputPort(ctx *zmq.Context, endpoint string) (socket *zmq.Socket, err
 }
 
 // Create a ZMQ PUSH socket & connect to a given endpoint
-func CreateOutputPort(ctx *zmq.Context, endpoint string) (socket *zmq.Socket, err error) {
-	socket, err = ctx.NewSocket(zmq.PUSH)
+func CreateOutputPort(endpoint string) (socket *zmq.Socket, err error) {
+	socket, err = zmq.NewSocket(zmq.PUSH)
 	if err != nil {
 		return nil, err
 	}

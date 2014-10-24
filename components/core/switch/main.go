@@ -3,13 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
 	"time"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -21,7 +22,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context                   *zmq.Context
 	inPort, gatePort, outPort *zmq.Socket
 	err                       error
 )
@@ -42,20 +42,17 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
+	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+	outPort, err = utils.CreateOutputPort(*outputEndpoint)
 	utils.AssertError(err)
 }
 
 func closePorts() {
 	inPort.Close()
 	outPort.Close()
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -80,7 +77,7 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, inPort, "switch.in", ch)
+	err = runtime.SetupShutdownByDisconnect(inPort, "switch.in", ch)
 	utils.AssertError(err)
 
 	// Start a separate goroutine to receive gate signals and avoid stocking them
@@ -88,17 +85,17 @@ func main() {
 	tickCh := make(chan bool)
 	go func() {
 		//  Socket to receive signal on
-		gatePort, err = utils.CreateInputPort(context, *gateEndpoint)
+		gatePort, err = utils.CreateInputPort(*gateEndpoint)
 		utils.AssertError(err)
 		defer gatePort.Close()
 
 		// Setup up monitoring
-		err = runtime.SetupShutdownByDisconnect(context, inPort, "switch.gate", ch)
+		err = runtime.SetupShutdownByDisconnect(inPort, "switch.gate", ch)
 		utils.AssertError(err)
 
 		for {
 			log.Println("[Gate routine]: Wait for IP on gate port...")
-			ip, err := gatePort.RecvMultipart(0)
+			ip, err := gatePort.RecvMessageBytes(0)
 			if err != nil {
 				log.Println("[Gate routine]: Error receiving message:", err.Error())
 				continue
@@ -129,7 +126,7 @@ func main() {
 			log.Println("[Main routine]: Passing data through...")
 			// Now read from in port (if it's a substream pass it as the whole)
 			for {
-				ip, err = inPort.RecvMultipart(0)
+				ip, err = inPort.RecvMessageBytes(0)
 				if err != nil {
 					log.Println("[Main routine]: Error receiving message:", err.Error())
 					break
@@ -138,7 +135,7 @@ func main() {
 					log.Println("[Main routine]: Invalid IP received:", err.Error())
 					break
 				}
-				outPort.SendMultipart(ip, 0)
+				outPort.SendMessage(ip)
 				if runtime.IsOpenBracket(ip) {
 					isSubstream = true
 					log.Println("[Main routine]: Substream BEGIN")

@@ -3,15 +3,16 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cascades-fbp/cascades/graph"
-	"github.com/cascades-fbp/cascades/library"
-	"github.com/codegangsta/cli"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/cascades-fbp/cascades/graph"
+	"github.com/cascades-fbp/cascades/library"
+	"github.com/codegangsta/cli"
 )
 
 // Implements catalog updating command

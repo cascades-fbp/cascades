@@ -3,14 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
-	"github.com/howeyc/fsnotify"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	"github.com/howeyc/fsnotify"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -22,7 +23,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context                  *zmq.Context
 	inPort, outPort, errPort *zmq.Socket
 	ip                       [][]byte
 	err                      error
@@ -40,14 +40,11 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
-	utils.AssertError(err)
-
-	inPort, err = utils.CreateInputPort(context, *inputEndpoint)
+	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
 	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort(context, *errorEndpoint)
+		errPort, err = utils.CreateOutputPort(*errorEndpoint)
 		utils.AssertError(err)
 	}
 }
@@ -60,7 +57,7 @@ func closePorts() {
 	if errPort != nil {
 		errPort.Close()
 	}
-	context.Close()
+	zmq.Term()
 }
 
 func isDir(path string) bool {
@@ -102,7 +99,7 @@ func main() {
 	// Process events
 	go func() {
 		//  Socket to send messages to task sink
-		outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+		outPort, err = utils.CreateOutputPort(*outputEndpoint)
 		utils.AssertError(err)
 		for {
 			select {
@@ -120,7 +117,7 @@ func main() {
 								log.Println("Added to watch:", path)
 							} else {
 								// Consider every file found in the created directory as just created
-								outPort.SendMultipart(runtime.NewPacket([]byte(path)), 0)
+								outPort.SendMessage(runtime.NewPacket([]byte(path)))
 							}
 							return nil
 						})
@@ -128,7 +125,7 @@ func main() {
 							log.Println("Error walking directory:", err.Error())
 						}
 					} else {
-						outPort.SendMultipart(runtime.NewPacket([]byte(ev.Name)), 0)
+						outPort.SendMessage(runtime.NewPacket([]byte(ev.Name)))
 					}
 				} else if ev.IsDelete() {
 					watcher.RemoveWatch(ev.Name)
@@ -143,7 +140,7 @@ func main() {
 	// Main loop
 	log.Println("Started")
 	for {
-		ip, err := inPort.RecvMultipart(0)
+		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -166,7 +163,7 @@ func main() {
 		if err != nil {
 			log.Printf("ERROR openning file %s: %s", dir, err.Error())
 			if errPort != nil {
-				errPort.SendMultipart(runtime.NewPacket([]byte(err.Error())), 0)
+				errPort.SendMessage(runtime.NewPacket([]byte(err.Error())))
 			}
 			continue
 		}

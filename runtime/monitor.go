@@ -3,11 +3,12 @@ package runtime
 import (
 	"encoding/binary"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
 	"log"
 	"os"
 	"syscall"
 	"time"
+
+	zmq "github.com/pebbe/zmq4"
 )
 
 const MONITOR_EVENTS zmq.Event = zmq.EVENT_CONNECTED | zmq.EVENT_LISTENING |
@@ -15,22 +16,22 @@ const MONITOR_EVENTS zmq.Event = zmq.EVENT_CONNECTED | zmq.EVENT_LISTENING |
 	zmq.EVENT_DISCONNECTED
 
 //
-// Creates a monitoring socket using given context and connects to a given socket to be monitored.
-// Returns a channel to receive monitoring events.
-// See event definitions here: http://api.zeromq.org/3-2:zmq-socket-monitor
+// MonitorSocket creates a monitoring socket using given context and connects
+// to a given socket to be monitored. Returns a channel to receive monitoring
+// events. See event definitions here: http://api.zeromq.org/3-2:zmq-socket-monitor
 //
-func MonitorSocket(context *zmq.Context, socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
+func MonitorSocket(socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
 	endpoint := fmt.Sprintf("inproc://%v.%v.%v", name, os.Getpid(), time.Now().UnixNano())
 	monCh := make(chan zmq.Event, 512) // make a buffered channel in case of heavy network activity
 	go func() {
-		monSock, err := context.NewSocket(zmq.PAIR)
+		monSock, err := zmq.NewSocket(zmq.PAIR)
 		if err != nil {
 			log.Println("Failed to start monitoring socket:", err.Error())
 			return
 		}
 		monSock.Connect(endpoint)
 		for {
-			data, err := monSock.RecvMultipart(0)
+			data, err := monSock.RecvMessageBytes(0)
 			if err != nil {
 				log.Println("Error receiving monitoring message:", err.Error())
 				return
@@ -70,9 +71,9 @@ func MonitorSocket(context *zmq.Context, socket *zmq.Socket, name string) (<-cha
 // This function is a helper shortcut to setup shutdown behavior once an accepted connection
 // closes (disconnects).
 //
-func SetupShutdownByDisconnect(context *zmq.Context, socket *zmq.Socket, name string, termChannel chan os.Signal) error {
+func SetupShutdownByDisconnect(socket *zmq.Socket, name string, termChannel chan os.Signal) error {
 	// Monitoring setup
-	ch, err := MonitorSocket(context, socket, name)
+	ch, err := MonitorSocket(socket, name)
 	if err != nil {
 		return err
 	}

@@ -2,9 +2,10 @@ package runtime
 
 import (
 	"fmt"
-	"github.com/cascades-fbp/cascades/log"
 	"syscall"
 	"time"
+
+	"github.com/cascades-fbp/cascades/log"
 )
 
 //

@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	"io/ioutil"
 	"log"
 	"os"
+
+	"github.com/cascades-fbp/cascades/components/utils"
+	"github.com/cascades-fbp/cascades/runtime"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -21,7 +22,6 @@ var (
 	debug          = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	context                   *zmq.Context
 	cmdPort, outPort, errPort *zmq.Socket
 	err                       error
 )
@@ -34,19 +34,16 @@ func validateArgs() {
 }
 
 func openPorts() {
-	context, err = zmq.NewContext()
-	utils.AssertError(err)
-
-	cmdPort, err = utils.CreateInputPort(context, *cmdEndpoint)
+	cmdPort, err = utils.CreateInputPort(*cmdEndpoint)
 	utils.AssertError(err)
 
 	if *outputEndpoint != "" {
-		outPort, err = utils.CreateOutputPort(context, *outputEndpoint)
+		outPort, err = utils.CreateOutputPort(*outputEndpoint)
 		utils.AssertError(err)
 	}
 
 	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort(context, *errorEndpoint)
+		errPort, err = utils.CreateOutputPort(*errorEndpoint)
 		utils.AssertError(err)
 	}
 }
@@ -59,7 +56,7 @@ func closePorts() {
 	if errPort != nil {
 		errPort.Close()
 	}
-	context.Close()
+	zmq.Term()
 }
 
 func main() {
@@ -84,12 +81,12 @@ func main() {
 	defer closePorts()
 
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(context, cmdPort, "exec.cmd", ch)
+	err = runtime.SetupShutdownByDisconnect(cmdPort, "exec.cmd", ch)
 	utils.AssertError(err)
 
 	log.Println("Started...")
 	for {
-		ip, err := cmdPort.RecvMultipart(0)
+		ip, err := cmdPort.RecvMessageBytes(0)
 		if err != nil {
 			log.Println("Error receiving message:", err.Error())
 			continue
@@ -101,14 +98,14 @@ func main() {
 		if err != nil {
 			log.Println(err.Error())
 			if errPort != nil {
-				errPort.SendMultipart(runtime.NewPacket([]byte(err.Error())), 0)
+				errPort.SendMessage(runtime.NewPacket([]byte(err.Error())))
 			}
 			continue
 		}
 		out = bytes.Replace(out, []byte("\n"), []byte(""), -1)
 		log.Println(string(out))
 		if outPort != nil {
-			outPort.SendMultipart(runtime.NewPacket(out), 0)
+			outPort.SendMessage(runtime.NewPacket(out))
 		}
 	}
 }

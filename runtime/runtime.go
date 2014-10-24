@@ -2,13 +2,14 @@ package runtime
 
 import (
 	"fmt"
-	zmq "github.com/alecthomas/gozmq"
-	"github.com/cascades-fbp/cascades/graph"
-	"github.com/cascades-fbp/cascades/library"
-	"github.com/cascades-fbp/cascades/log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cascades-fbp/cascades/graph"
+	"github.com/cascades-fbp/cascades/library"
+	"github.com/cascades-fbp/cascades/log"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (
@@ -326,16 +327,13 @@ func (self *Runtime) Activate() {
 
 		log.SystemOutput("Activating processes by sending IIPs...")
 
-		context, _ := zmq.NewContext()
-		defer context.Close()
-
-		sender, _ := context.NewSocket(zmq.PUSH)
+		sender, _ := zmq.NewSocket(zmq.PUSH)
 		defer sender.Close()
 
 		for _, iip := range self.iips {
 			log.SystemOutput(fmt.Sprintf("Sending '%s' to socket '%s'", iip.Payload, iip.Socket))
 			sender.Connect(iip.Socket)
-			sender.SendMultipart(NewPacket([]byte(iip.Payload)), zmq.NOBLOCK)
+			sender.SendMessageDontwait(NewPacket([]byte(iip.Payload)))
 			sender.Disconnect(iip.Socket)
 		}
 	}
