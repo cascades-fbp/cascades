@@ -1,0 +1,86 @@
+package fbp
+
+type Fbp Peg {
+    BaseFbp
+}
+
+start <- line* _ !.
+
+line <-
+	_ "EXPORT=" [A-Za-z.0-9_]+ ":" [A-Z0-9_]+ _ LineTerminator?
+  / _ "INPORT=" <[A-Za-z0-9_]+ "." [A-Z0-9_\[\]]+ ":" [A-Z0-9_]+> _ LineTerminator?   { p.createInport(buffer[begin:end]) }
+  / _ "OUTPORT=" <[A-Za-z0-9_]+ "." [A-Z0-9_\[\]]+ ":" [A-Z0-9_]+> _ LineTerminator?    { p.createOutport(buffer[begin:end]) }
+  / comment [\n\r]?
+  / _ [\n\r]
+  / _ connection _ LineTerminator?      
+
+LineTerminator <- _ ","? comment? [\n\r]?
+
+comment <- _ "#" anychar*                   
+
+connection <-                               
+  (                           
+  	(                         
+      bridge 
+      _ "->" _                
+      connection              
+    )
+    / bridge                  
+  )                                         
+
+bridge <-                                   
+	(                           
+    port _                                  { p.inPort = p.port; p.inPortIndex = p.index }
+    node _                    
+    port                                    { p.outPort = p.port; p.outPortIndex = p.index }
+  )                                         { p.createMiddlet() }
+  / iip                       
+  / leftlet                                 { p.createLeftlet() }
+  / rightlet                                { p.createRightlet() }
+
+leftlet <-     
+  (node _ portWithIndex)               
+  /
+  (node _ port)
+
+iip <- "'" <iipchar*> "'"                   { p.iip = buffer[begin:end] }       
+
+rightlet <-    
+  (portWithIndex _ node)               
+  /
+  (port _ node)
+
+node <-                       
+  (
+    <[a-zA-Z0-9_]+>                         { p.nodeProcessName = buffer[begin:end] }
+    component?                
+  )                                         { p.createNode() }
+
+component <- 
+  "("                         
+    <[a-zA-Z/\-0-9_]*>                      { p.nodeComponentName = buffer[begin:end] }
+    compMeta? 
+  ")"                         
+
+compMeta <- ":" <[a-zA-Z/=_,0-9]+>          { p.nodeMeta = buffer[begin:end] }  
+
+port <- <[A-Z.0-9_]+> __                    { p.port = buffer[begin:end] }        
+
+portWithIndex <-
+  (
+    <[A-Z.0-9_]+>                           { p.port = buffer[begin:end] }
+    "[" 
+    <[0-9]+>                                { p.index = buffer[begin:end] }
+    "]"                                    
+    __
+  )
+
+anychar <- [^\n\r]
+
+iipchar <-
+	[\\][']
+  / [^']
+
+_ <- [ \t]*
+
+__ <- [ \t]+

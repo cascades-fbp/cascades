@@ -1,0 +1,36 @@
+{
+	"ImportPath": "github.com/cascades-fbp/cascades",
+	"GoVersion": "go1.3.3",
+	"Packages": [
+		"github.com/cascades-fbp/cascades/cmd/...",
+		"github.com/cascades-fbp/cascades/components/..."
+	],
+	"Deps": [
+		{
+			"ImportPath": "github.com/bmizerany/pat",
+			"Rev": "b8a35001b773c267eb260a691f4e5499a3531600"
+		},
+		{
+			"ImportPath": "github.com/codegangsta/cli",
+			"Comment": "1.2.0-26-gf7ebb76",
+			"Rev": "f7ebb761e83e21225d1d8954fde853bf8edd46c4"
+		},
+		{
+			"ImportPath": "github.com/daviddengcn/go-colortext",
+			"Rev": "b5c0891944c2f150ccc9d02aecf51b76c14c2948"
+		},
+		{
+			"ImportPath": "github.com/howeyc/fsnotify",
+			"Comment": "v0.9.0-11-g6b1ef89",
+			"Rev": "6b1ef893dc11e0447abda6da20a5203481878dda"
+		},
+		{
+			"ImportPath": "github.com/oleksandr/fbp",
+			"Rev": "2781cd78c431ead1956f994e322285f746338c44"
+		},
+		{
+			"ImportPath": "github.com/pebbe/zmq4",
+			"Rev": "31dba2dadf451d949a4169b7dfe24f18ac903c4e"
+		}
+	]
+}

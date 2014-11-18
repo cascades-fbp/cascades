@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	zmq "github.com/pebbe/zmq4"
+	zmq "github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/pebbe/zmq4"
 )
 
 // Print the error message if err is not nil & exist with status code 1
