@@ -6,7 +6,7 @@ import (
 	"os/signal"
 
 	"github.com/cascades-fbp/cascades/server"
-	"github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/codegangsta/cli"
 )
 
 func serve(c *cli.Context) {

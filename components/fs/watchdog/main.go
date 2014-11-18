@@ -10,8 +10,8 @@ import (
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
-	"github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/howeyc/fsnotify"
-	zmq "github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/pebbe/zmq4"
+	"github.com/howeyc/fsnotify"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (

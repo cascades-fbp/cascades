@@ -12,7 +12,7 @@ import (
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
-	zmq "github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/pebbe/zmq4"
+	zmq "github.com/pebbe/zmq4"
 )
 
 var (

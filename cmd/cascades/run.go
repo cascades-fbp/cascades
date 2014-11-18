@@ -9,8 +9,8 @@ import (
 
 	"github.com/cascades-fbp/cascades/library"
 	"github.com/cascades-fbp/cascades/runtime"
-	"github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/codegangsta/cli"
-	zmq "github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/pebbe/zmq4"
+	"github.com/codegangsta/cli"
+	zmq "github.com/pebbe/zmq4"
 )
 
 func run(c *cli.Context) {

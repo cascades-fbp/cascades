@@ -12,7 +12,7 @@ import (
 
 	"github.com/cascades-fbp/cascades/graph"
 	"github.com/cascades-fbp/cascades/library"
-	"github.com/cascades-fbp/cascades/Godeps/_workspace/src/github.com/codegangsta/cli"
+	"github.com/codegangsta/cli"
 )
 
 // Implements catalog updating command
