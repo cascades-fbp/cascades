@@ -45,7 +45,7 @@ func main() {
 			Subcommands: []cli.Command{
 				{
 					Name:   "add",
-					Usage:  "updates a library with component(s) form a given path (either directory with components  or component file)",
+					Usage:  "updates a library with component(s) from a given path (either directory with components  or component file)",
 					Action: addToLibrary,
 					Flags: []cli.Flag{
 						cli.StringFlag{
@@ -61,23 +61,25 @@ func main() {
 				},
 			},
 		},
-		{
-			Name:  "serve",
-			Usage: "Start a runtime server for executing submitted graphs",
-			Flags: []cli.Flag{
-				cli.StringFlag{
-					Name:  "addr",
-					Value: "0.0.0.0:7878",
-					Usage: "binding address for the server",
+		/*
+			{
+				Name:  "serve",
+				Usage: "Start a runtime server for executing submitted graphs",
+				Flags: []cli.Flag{
+					cli.StringFlag{
+						Name:  "addr",
+						Value: "0.0.0.0:7878",
+						Usage: "binding address for the server",
+					},
+					cli.StringFlag{
+						Name:  "static",
+						Value: "static",
+						Usage: "root directory with static resources (will be mounted as /static/)",
+					},
 				},
-				cli.StringFlag{
-					Name:  "static",
-					Value: "static",
-					Usage: "root directory with static resources (will be mounted as /static/)",
-				},
+				Action: serve,
 			},
-			Action: serve,
-		},
+		*/
 	}
 
 	app.Run(os.Args)
