@@ -10,11 +10,11 @@ import (
 //
 // Shutdown the network
 //
-func ShutdownProcesses(of *OutletFactory) {
+func (self *Runtime) Shutdown() {
 	shutdown_mutex.Lock()
 	log.SystemOutput("Shutdown...")
 
-	for name, ps := range processes {
+	for name, ps := range self.processes {
 		log.SystemOutput(fmt.Sprintf("terminating %s", name))
 		ps.cmd.Process.Signal(os.Kill)
 	}

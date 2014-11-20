@@ -10,7 +10,7 @@ import (
 // Start a process
 //
 func (p *Process) Start() {
-	command := []string{"cmd", "/C", p.Command}
+	command := []string{"cmd", "/C", p.Command()}
 	p.cmd = exec.Command(command[0], command[1:]...)
 	p.cmd.Dir = p.Root
 	p.cmd.Env = p.envAsArray()
