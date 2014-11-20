@@ -1,13 +1,22 @@
 package runtime
 
-/*
+import (
+	"fmt"
+	"os"
+
+	"github.com/cascades-fbp/cascades/log"
+)
+
+//
+// Shutdown the network
+//
 func ShutdownProcesses(of *OutletFactory) {
 	shutdown_mutex.Lock()
-	of.SystemOutput("shutting down")
+	log.SystemOutput("Shutdown...")
+
 	for name, ps := range processes {
-		of.SystemOutput(fmt.Sprintf("terminating %s", name))
+		log.SystemOutput(fmt.Sprintf("terminating %s", name))
 		ps.cmd.Process.Signal(os.Kill)
 	}
 	os.Exit(1)
 }
-*/
