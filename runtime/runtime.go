@@ -247,7 +247,7 @@ func (self *Runtime) prepareProcesses() error {
 	// Add sockets to component CLI arguments
 	for n, s := range arguments {
 		parts := strings.SplitN(n, ".", 2)
-		self.processes[parts[0]].Args["-port."+strings.ToLower(parts[1])] = strings.Join(s, ",")
+		self.processes[parts[0]].Args["--port."+strings.ToLower(parts[1])] = strings.Join(s, ",")
 		if self.Debug {
 			fmt.Println(n, s)
 		}
