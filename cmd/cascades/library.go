@@ -97,7 +97,10 @@ func addDirToLibrary(c *cli.Context, r library.Registrar, dir string) {
 		if info.IsDir() {
 			return nil
 		}
-		name := strings.TrimPrefix(strings.TrimPrefix(path, dir), "/")
+		sep := string(filepath.Separator)
+		name := strings.TrimPrefix(strings.TrimPrefix(path, dir), sep)
+		name = strings.TrimPrefix(name, sep)
+		name = strings.Replace(name, sep, "/", 1)
 		name = strings.TrimSuffix(name, ".fbp")
 		name = strings.TrimSuffix(name, ".json")
 		name = strings.TrimSuffix(name, ".exe")
