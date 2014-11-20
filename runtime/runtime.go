@@ -172,7 +172,7 @@ func (self *Runtime) prepareProcesses() error {
 		}
 		self.processes[name] = NewProcess(entry.Executable)
 		if self.Debug {
-			self.processes[name].Args["--debug"] = "true"
+			self.processes[name].Args["--debug"] = ""
 		}
 		if len(name) > nameLength {
 			nameLength = len(name)

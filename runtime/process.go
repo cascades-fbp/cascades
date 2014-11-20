@@ -64,7 +64,12 @@ func (p *Process) Command() string {
 func (p *Process) Arguments() string {
 	args := ""
 	for k, v := range p.Args {
-		args = fmt.Sprintf("%s%s=\"%s\" ", args, k, v)
+		if v == "" {
+			args = fmt.Sprintf("%s%s ", args, k)
+		} else {
+			args = fmt.Sprintf("%s%s=\"%s\" ", args, k, v)
+		}
+
 	}
 	return strings.ToLower(args)
 }
