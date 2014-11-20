@@ -5,8 +5,9 @@ import (
 )
 
 var registryEntry = &library.Entry{
-	Description: `Reads a given file from the local file system line by line and emits each line into the output port. 
+	Description: `Reads a given file from the local file system line by line and emits each line into the output port.
 The output data is sent as substream with open bracket IP in the beginning and close bracket IP at the end of the stream for each file.`,
+	Elementary: true,
 	Inports: []library.EntryPort{
 		library.EntryPort{
 			Name:        "FILE",

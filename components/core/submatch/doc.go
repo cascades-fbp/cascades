@@ -6,6 +6,7 @@ import (
 
 var registryEntry = &library.Entry{
 	Description: "Uses a given RegEx with named capturing groups for analyzing an input string. Outputs the matched map in JSON",
+	Elementary:  true,
 	Inports: []library.EntryPort{
 		library.EntryPort{
 			Name:        "PATTERN",
