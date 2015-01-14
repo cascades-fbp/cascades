@@ -30,8 +30,8 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+func openPorts(termCh chan os.Signal) {
+	inPort, err = utils.CreateMonitoredInputPort("drop.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 }
 
@@ -58,12 +58,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "drop.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Started...")
 	for {

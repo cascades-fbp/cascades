@@ -89,7 +89,7 @@ func main() {
 	openPorts()
 	defer closePorts()
 
-	utils.HandleInterruption()
+	ch := utils.HandleInterruption()
 
 	// Setup watcher
 	watcher, err := fsnotify.NewWatcher()
@@ -99,7 +99,7 @@ func main() {
 	// Process events
 	go func() {
 		//  Socket to send messages to task sink
-		outPort, err = utils.CreateOutputPort(*outputEndpoint)
+		outPort, err = utils.CreateMonitoredOutputPort("fs/watchdog.out", *outputEndpoint, ch)
 		utils.AssertError(err)
 		for {
 			select {

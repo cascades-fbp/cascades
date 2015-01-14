@@ -43,14 +43,14 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
+func openPorts(termCh chan os.Signal) {
 	tplPort, err = utils.CreateInputPort(*tplEndpoint)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+	inPort, err = utils.CreateMonitoredInputPort("template.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateMonitoredOutputPort("template.out", *outputEndpoint, termCh)
 	utils.AssertError(err)
 }
 
@@ -79,12 +79,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "template.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Waiting for template...")
 	var (

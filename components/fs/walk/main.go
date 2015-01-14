@@ -38,11 +38,11 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
+func openPorts(termCh chan os.Signal) {
 	inPort, err = utils.CreateInputPort(*inputEndpoint)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateMonitoredOutputPort("fs/walk.file", *outputEndpoint, termCh)
 	utils.AssertError(err)
 
 	if *errorEndpoint != "" {
@@ -78,12 +78,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "fswalk.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Started...")
 	for {

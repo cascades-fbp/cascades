@@ -41,11 +41,11 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+func openPorts(termCh chan os.Signal) {
+	inPort, err = utils.CreateMonitoredInputPort("switch.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateMonitoredOutputPort("switch.out", *outputEndpoint, termCh)
 	utils.AssertError(err)
 }
 
@@ -73,25 +73,18 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "switch.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	// Start a separate goroutine to receive gate signals and avoid stocking them
 	// blocking the channel (use timeout to skip ticks if data sending is still in progress)
 	tickCh := make(chan bool)
 	go func() {
 		//  Socket to receive signal on
-		gatePort, err = utils.CreateInputPort(*gateEndpoint)
+		gatePort, err = utils.CreateMonitoredInputPort("switch.gate", *gateEndpoint, ch)
 		utils.AssertError(err)
 		defer gatePort.Close()
-
-		// Setup up monitoring
-		err = runtime.SetupShutdownByDisconnect(inPort, "switch.gate", ch)
-		utils.AssertError(err)
 
 		for {
 			log.Println("[Gate routine]: Wait for IP on gate port...")

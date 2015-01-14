@@ -67,6 +67,7 @@ func main() {
 
 	validateArgs()
 
+	utils.HandleInterruption()
 	openPorts()
 	defer closePorts()
 
@@ -83,8 +84,6 @@ func main() {
 		}
 		break
 	}
-
-	utils.HandleInterruption()
 
 	log.Println("Started...")
 

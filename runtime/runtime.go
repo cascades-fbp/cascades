@@ -299,8 +299,12 @@ func (r *Runtime) Start() {
 			procWaitGroup.Done()
 			delete(r.processes, name)
 			fmt.Fprintln(ps.Stdout, "Stopped")
-			//TODO: check all connections with this process and send them shutdown commands as well
-			if !ps.cmd.ProcessState.Success() || len(r.processes) == 0 {
+
+			// Shutdown when no processes left, otherwise network should collapse
+			// in a cascade way...
+			//if !ps.cmd.ProcessState.Success() || len(r.processes) == 0 {
+			if len(r.processes) == 0 {
+				fmt.Fprintln(ps.Stdout, "I was the last running process. Calling runtime to SHUTDOWN")
 				r.Shutdown()
 			}
 

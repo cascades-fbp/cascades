@@ -37,21 +37,21 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
+func openPorts(termCh chan os.Signal) {
 	outports := strings.Split(*outputEndpoint, ",")
 	if len(outports) == 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+	inPort, err = utils.CreateMonitoredInputPort("splitter.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 
 	outPortArray = []*zmq.Socket{}
 	for i, endpoint := range outports {
 		endpoint = strings.TrimSpace(endpoint)
 		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
-		port, err = utils.CreateOutputPort(endpoint)
+		port, err = utils.CreateMonitoredOutputPort(fmt.Sprintf("splitter.out[%v]", i), endpoint, termCh)
 		outPortArray = append(outPortArray, port)
 	}
 }
@@ -82,12 +82,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "splitter.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Started...")
 	for {

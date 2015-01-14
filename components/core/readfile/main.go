@@ -37,11 +37,11 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
-	filePort, err = utils.CreateInputPort(*fileEndpoint)
+func openPorts(termCh chan os.Signal) {
+	filePort, err = utils.CreateMonitoredInputPort("readfile.file", *fileEndpoint, termCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateMonitoredOutputPort("readfile.out", *outputEndpoint, termCh)
 	utils.AssertError(err)
 
 	if *errorEndpoint != "" {
@@ -77,12 +77,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(filePort, "readfile.file", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Started...")
 	for {

@@ -62,14 +62,14 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
+func openPorts(termCh chan os.Signal) {
 	patternPort, err = utils.CreateInputPort(*patternEndpoint)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+	inPort, err = utils.CreateMonitoredInputPort("submatch.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 
-	mapPort, err = utils.CreateOutputPort(*mapEndpoint)
+	mapPort, err = utils.CreateMonitoredOutputPort("submatch.map", *mapEndpoint, termCh)
 	utils.AssertError(err)
 }
 
@@ -98,12 +98,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "submatch.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Waiting for pattern...")
 	var (

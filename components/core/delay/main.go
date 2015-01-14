@@ -41,14 +41,14 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+func openPorts(termCh chan os.Signal) {
+	inPort, err = utils.CreateMonitoredInputPort("delay.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 
 	delayPort, err = utils.CreateInputPort(*delayEndpoint)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateMonitoredOutputPort("delay.out", *outputEndpoint, termCh)
 	utils.AssertError(err)
 }
 
@@ -77,12 +77,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "delay.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Waiting for configuration IP...")
 	var delay time.Duration

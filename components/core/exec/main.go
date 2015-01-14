@@ -33,8 +33,8 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
-	cmdPort, err = utils.CreateInputPort(*cmdEndpoint)
+func openPorts(termCh chan os.Signal) {
+	cmdPort, err = utils.CreateMonitoredInputPort("exec.cmd", *cmdEndpoint, termCh)
 	utils.AssertError(err)
 
 	if *outputEndpoint != "" {
@@ -77,12 +77,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(cmdPort, "exec.cmd", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	log.Println("Started...")
 	for {

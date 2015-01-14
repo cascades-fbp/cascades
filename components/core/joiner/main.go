@@ -38,7 +38,7 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
+func openPorts(termCh chan os.Signal) {
 	inports := strings.Split(*inputEndpoint, ",")
 	if len(inports) == 0 {
 		flag.Usage()
@@ -51,7 +51,7 @@ func openPorts() {
 	for i, endpoint := range inports {
 		endpoint = strings.TrimSpace(endpoint)
 		log.Printf("Binding OUT[%v]=%s", i, endpoint)
-		port, err = utils.CreateInputPort(endpoint)
+		port, err = utils.CreateMonitoredInputPort(fmt.Sprintf("joiner.in[%v]", i), endpoint, termCh)
 		utils.AssertError(err)
 		inPortArray = append(inPortArray, port)
 		poller.Add(port, zmq.POLLIN)
@@ -86,10 +86,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
+	ch := utils.HandleInterruption()
+	openPorts(ch)
 	defer closePorts()
-
-	utils.HandleInterruption()
 
 	log.Println("Started...")
 	var (

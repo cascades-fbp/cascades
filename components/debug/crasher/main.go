@@ -36,11 +36,11 @@ func validateArgs() {
 	}
 }
 
-func openPorts() {
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+func openPorts(termCh chan os.Signal) {
+	inPort, err = utils.CreateMonitoredInputPort("debug/crasher.in", *inputEndpoint, termCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateMonitoredOutputPort("debug/crasher.out", *outputEndpoint, termCh)
 	utils.AssertError(err)
 }
 
@@ -68,12 +68,9 @@ func main() {
 
 	validateArgs()
 
-	openPorts()
-	defer closePorts()
-
 	ch := utils.HandleInterruption()
-	err = runtime.SetupShutdownByDisconnect(inPort, "crasher.in", ch)
-	utils.AssertError(err)
+	openPorts(ch)
+	defer closePorts()
 
 	go func() {
 		log.Println("Waiting for a crash")
