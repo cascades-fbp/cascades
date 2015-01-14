@@ -15,6 +15,87 @@ import (
 	"github.com/codegangsta/cli"
 )
 
+// Print catalog command
+func listLibrary(c *cli.Context) {
+	// read components library file if exists
+	data, err := ioutil.ReadFile(c.GlobalString("file"))
+	if err != nil && os.IsExist(err) {
+		fmt.Printf("Failed to read catalogue file: %s", err.Error())
+		return
+	}
+	if data == nil {
+		fmt.Println("Library is empty")
+		return
+	}
+
+	// create JSON library (the only implementation for now)
+	var db library.JSONLibrary
+	err = json.Unmarshal(data, &db)
+	if err != nil {
+		fmt.Printf("Library file is invalid: %s", err.Error())
+		return
+	}
+
+	for _, e := range db.List() {
+		fmt.Println(e.Name)
+	}
+}
+
+func infoFromLibrary(c *cli.Context) {
+	if len(c.Args()) != 1 {
+		fmt.Printf("Incorrect Usage. You need to provide a component name as argument!\n\n")
+		cli.ShowAppHelp(c)
+		return
+	}
+
+	// read components library file if exists
+	data, err := ioutil.ReadFile(c.GlobalString("file"))
+	if err != nil && os.IsExist(err) {
+		fmt.Printf("Failed to read catalogue file: %s", err.Error())
+		return
+	}
+	if data == nil {
+		fmt.Println("Library is empty")
+		return
+	}
+
+	// create JSON library (the only implementation for now)
+	var db library.JSONLibrary
+	err = json.Unmarshal(data, &db)
+	if err != nil {
+		fmt.Printf("Library file is invalid: %s", err.Error())
+		return
+	}
+
+	component := strings.ToLower(c.Args().First())
+	for _, e := range db.List() {
+		if e.Name != component {
+			continue
+		}
+		fmt.Printf("NAME:\n    %s\n", e.Name)
+		fmt.Printf("LOCATION:\n    %s\n", e.Executable)
+		fmt.Println("INPUTS:")
+		if len(e.Inports) == 0 {
+			fmt.Println("    None")
+		} else {
+			for _, p := range e.Inports {
+				fmt.Printf("    %s - type=%s, array=%v, required=%v\n", strings.ToUpper(p.Name), p.Type, p.Addressable, p.Required)
+			}
+		}
+		fmt.Println("OUTPUTS:")
+		if len(e.Outports) == 0 {
+			fmt.Println("    None")
+		} else {
+			for _, p := range e.Outports {
+				fmt.Printf("    %s - type=%s, array=%v, required=%v\n", strings.ToUpper(p.Name), p.Type, p.Addressable, p.Required)
+			}
+
+		}
+		fmt.Printf("DESCRIPTION:\n    %s\n", e.Description)
+		break
+	}
+}
+
 // Implements catalog updating command
 func addToLibrary(c *cli.Context) {
 	if len(c.Args()) != 1 {

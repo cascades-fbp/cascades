@@ -10,6 +10,8 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "cascades"
 	app.Usage = "A Cascades FBP runtime/scheduler for the FBP applications."
+	app.Author = "Alexander Lobunets"
+	app.Email = "alexander.lobunets@gmail.com"
 	app.Version = "0.1.0"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -58,6 +60,16 @@ func main() {
 							Usage: "enforces updating a component entry in the library if it already exists",
 						},
 					},
+				},
+				{
+					Name:   "list",
+					Usage:  "lists all registered components and their documentation",
+					Action: listLibrary,
+				},
+				{
+					Name:   "info",
+					Usage:  "prints details for a given component",
+					Action: infoFromLibrary,
 				},
 			},
 		},
