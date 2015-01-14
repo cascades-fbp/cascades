@@ -53,6 +53,9 @@ func run(c *cli.Context) {
 	// Start the network
 	go scheduler.Start()
 
+	// Shutdown ZMQ upon shutdown
+	defer zmq.Term()
+
 	// Ctrl+C handling
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, os.Interrupt)
@@ -61,7 +64,6 @@ func run(c *cli.Context) {
 		case <-ch:
 			go scheduler.Shutdown()
 		case <-scheduler.Done:
-			zmq.Term()
 			fmt.Println("Stopped")
 			os.Exit(0)
 		}

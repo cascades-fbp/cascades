@@ -38,6 +38,7 @@ func CreateMonitoredInputPort(name string, endpoint string, termChannel chan os.
 	if termChannel == nil {
 		return socket, socket.Bind(endpoint)
 	}
+
 	ch, err := MonitorSocket(socket, name)
 	if err != nil {
 		return nil, err
@@ -46,11 +47,23 @@ func CreateMonitoredInputPort(name string, endpoint string, termChannel chan os.
 	if err != nil {
 		return nil, err
 	}
-	err = WaitForConnection(socket, ch)
-	if err != nil {
-		return nil, err
+
+	log.Println("Waiting for input port connection to establish... ")
+	for connected := false; !connected; {
+		select {
+		case e := <-ch:
+			if e == zmq.EVENT_ACCEPTED {
+				log.Println("Input port connected (EVENT_ACCEPTED)")
+				connected = true
+			}
+			//log.Println(">> IN:", e)
+		case <-time.Tick(30 * time.Second):
+			return nil, fmt.Errorf("Timeout: input port connection was not established within provided interval")
+		}
 	}
+
 	go shutdownByDisconnect(ch, termChannel)
+
 	return socket, nil
 }
 
@@ -68,6 +81,7 @@ func CreateMonitoredOutputPort(name string, endpoint string, termChannel chan os
 	if termChannel == nil {
 		return socket, socket.Connect(endpoint)
 	}
+
 	ch, err := MonitorSocket(socket, name)
 	if err != nil {
 		return nil, err
@@ -76,34 +90,24 @@ func CreateMonitoredOutputPort(name string, endpoint string, termChannel chan os
 	if err != nil {
 		return nil, err
 	}
-	err = WaitForConnection(socket, ch)
-	if err != nil {
-		return nil, err
-	}
-	go shutdownByDisconnect(ch, termChannel)
-	return socket, nil
-}
 
-// WaitForConnection blocks execution until connection established.
-// Monitoring should be established
-func WaitForConnection(socket *zmq.Socket, eventChannel <-chan zmq.Event) error {
-	t, err := socket.GetType()
-	if err != nil {
-		return err
-	}
-
-	log.Println("Waiting for port connection to establish... ")
-	for e := range eventChannel {
-		if t == zmq.PULL && e == zmq.EVENT_ACCEPTED {
-			log.Println("Port connected (EVENT_ACCEPTED)")
-			break
-		} else if t == zmq.PUSH && e == zmq.EVENT_CONNECTED {
-			log.Println("Port connected (EVENT_CONNECTED)")
-			break
+	log.Println("Waiting for output port connection to establish... ")
+	for connected := false; !connected; {
+		select {
+		case e := <-ch:
+			if e == zmq.EVENT_CONNECTED {
+				log.Println("Output port connected (EVENT_CONNECTED)")
+				connected = true
+			}
+			//log.Println(">> OUT:", e)
+		case <-time.Tick(30 * time.Second):
+			return nil, fmt.Errorf("Timeout: output port connection was not established within provided interval")
 		}
 	}
 
-	return nil
+	go shutdownByDisconnect(ch, termChannel)
+
+	return socket, nil
 }
 
 //
@@ -154,30 +158,32 @@ func MonitorSocket(socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
 				return
 			}
 			eventID := zmq.Event(binary.LittleEndian.Uint16(data[0][:2]))
-			switch eventID {
-			case zmq.EVENT_CONNECTED:
-				log.Println("MonitorSocket: EVENT_CONNECTED", string(data[1]))
-			case zmq.EVENT_CONNECT_DELAYED:
-				log.Println("MonitorSocket: EVENT_CONNECT_DELAYED", string(data[1]))
-			case zmq.EVENT_CONNECT_RETRIED:
-				log.Println("MonitorSocket: EVENT_CONNECT_RETRIED", string(data[1]))
-			case zmq.EVENT_LISTENING:
-				log.Println("MonitorSocket: EVENT_LISTENING", string(data[1]))
-			case zmq.EVENT_BIND_FAILED:
-				log.Println("MonitorSocket: EVENT_BIND_FAILED", string(data[1]))
-			case zmq.EVENT_ACCEPTED:
-				log.Println("MonitorSocket: EVENT_ACCEPTED", string(data[1]))
-			case zmq.EVENT_ACCEPT_FAILED:
-				log.Println("MonitorSocket: EVENT_ACCEPT_FAILED", string(data[1]))
-			case zmq.EVENT_CLOSED:
-				log.Println("MonitorSocket: EVENT_CLOSED", string(data[1]))
-			case zmq.EVENT_CLOSE_FAILED:
-				log.Println("MonitorSocket: EVENT_CLOSE_FAILED", string(data[1]))
-			case zmq.EVENT_DISCONNECTED:
-				log.Println("MonitorSocket: EVENT_DISCONNECTED", string(data[1]))
-			default:
-				log.Printf("MonitorSocket: Unsupported event id: %#v - Message: %#v", eventID, data)
-			}
+			/*
+				switch eventID {
+				case zmq.EVENT_CONNECTED:
+					log.Println("MonitorSocket: EVENT_CONNECTED", string(data[1]))
+				case zmq.EVENT_CONNECT_DELAYED:
+					log.Println("MonitorSocket: EVENT_CONNECT_DELAYED", string(data[1]))
+				case zmq.EVENT_CONNECT_RETRIED:
+					log.Println("MonitorSocket: EVENT_CONNECT_RETRIED", string(data[1]))
+				case zmq.EVENT_LISTENING:
+					log.Println("MonitorSocket: EVENT_LISTENING", string(data[1]))
+				case zmq.EVENT_BIND_FAILED:
+					log.Println("MonitorSocket: EVENT_BIND_FAILED", string(data[1]))
+				case zmq.EVENT_ACCEPTED:
+					log.Println("MonitorSocket: EVENT_ACCEPTED", string(data[1]))
+				case zmq.EVENT_ACCEPT_FAILED:
+					log.Println("MonitorSocket: EVENT_ACCEPT_FAILED", string(data[1]))
+				case zmq.EVENT_CLOSED:
+					log.Println("MonitorSocket: EVENT_CLOSED", string(data[1]))
+				case zmq.EVENT_CLOSE_FAILED:
+					log.Println("MonitorSocket: EVENT_CLOSE_FAILED", string(data[1]))
+				case zmq.EVENT_DISCONNECTED:
+					log.Println("MonitorSocket: EVENT_DISCONNECTED", string(data[1]))
+				default:
+					log.Printf("MonitorSocket: Unsupported event id: %#v - Message: %#v", eventID, data)
+				}
+			*/
 			monCh <- zmq.Event(eventID)
 		}
 	}()
