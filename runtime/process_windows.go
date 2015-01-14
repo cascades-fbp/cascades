@@ -21,7 +21,7 @@ func (p *Process) Start() {
 }
 
 //
-// Send signal to a process
+// Signal sends signal to a process
 //
 func (p *Process) Signal(signal syscall.Signal) {
 	group, _ := os.FindProcess(-1 * p.cmd.Process.Pid)

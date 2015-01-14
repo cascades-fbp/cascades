@@ -77,7 +77,7 @@ func main() {
 
 	go func() {
 		log.Println("Waiting for a crash")
-		time.Sleep(3 * time.Second)
+		time.Sleep(7 * time.Second)
 		os.Exit(0)
 	}()
 

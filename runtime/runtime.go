@@ -23,7 +23,7 @@ var (
 type Runtime struct {
 	registrar      library.Registrar
 	initialTCPPort uint
-	graph          *graph.GraphDescription
+	graph          *graph.Description
 	processes      map[string]*Process
 	iips           []ProcessIIP
 	Done           chan bool
@@ -31,7 +31,7 @@ type Runtime struct {
 }
 
 //
-// Runtime constructor
+// NewRuntime is a Runtime constructor
 //
 func NewRuntime(registrar library.Registrar, initialTCPPort uint) *Runtime {
 	r := &Runtime{
@@ -46,27 +46,27 @@ func NewRuntime(registrar library.Registrar, initialTCPPort uint) *Runtime {
 }
 
 //
-// Loads graph definition in supported format from a given file path
+// LoadGraph loads graph definition in supported format from a given file path
 //
-func (self *Runtime) LoadGraph(graphfile string) error {
+func (r *Runtime) LoadGraph(graphfile string) error {
 	var err error
-	if self.graph, err = loadGraph(graphfile); err != nil {
+	if r.graph, err = loadGraph(graphfile); err != nil {
 		return err
 	}
-	err = self.flattenGraph(self.graph)
+	err = r.flattenGraph(r.graph)
 	return err
 }
 
 //
 // Validates the graph against library and flattens it (unwraps subgraphs)
 //
-func (self *Runtime) flattenGraph(g *graph.GraphDescription) error {
+func (r *Runtime) flattenGraph(g *graph.Description) error {
 	// copy processes map to interate over
 	hasSubgraphs := false
 	processes := g.Processes
 	for name, process := range processes {
 		// Check if known component
-		e, err := self.registrar.Get(process.Component)
+		e, err := r.registrar.Get(process.Component)
 		if err != nil {
 			return fmt.Errorf("Component %s not found in the library", process.Component)
 		}
@@ -123,7 +123,7 @@ func (self *Runtime) flattenGraph(g *graph.GraphDescription) error {
 	}
 
 	if hasSubgraphs {
-		err := self.flattenGraph(g)
+		err := r.flattenGraph(g)
 		if err != nil {
 			return err
 		}
@@ -133,27 +133,27 @@ func (self *Runtime) flattenGraph(g *graph.GraphDescription) error {
 }
 
 //
-// Print the current graph for debug purposes
+// PrintGraph print the current graph for debug purposes
 //
-func (self *Runtime) PrintGraph() {
+func (r *Runtime) PrintGraph() {
 	fmt.Println("--------- Properties ----------")
-	for k, v := range self.graph.Properties {
+	for k, v := range r.graph.Properties {
 		fmt.Printf("%s: %s\n", k, v)
 	}
 	fmt.Println("---------- Inports -----------")
-	for _, e := range self.graph.Inports {
+	for _, e := range r.graph.Inports {
 		fmt.Printf("%s exposed as %s", e.Private, e.Public)
 	}
 	fmt.Println("---------- Outports -----------")
-	for _, e := range self.graph.Outports {
+	for _, e := range r.graph.Outports {
 		fmt.Printf("%s exposed as %s", e.Private, e.Public)
 	}
 	fmt.Println("---------- Processes ----------")
-	for p, c := range self.graph.Processes {
+	for p, c := range r.graph.Processes {
 		fmt.Println(p, c.String())
 	}
 	fmt.Println("--------- Connections ---------")
-	for _, c := range self.graph.Connections {
+	for _, c := range r.graph.Connections {
 		fmt.Println(c.String())
 	}
 	fmt.Println("-------------------------------")
@@ -162,30 +162,30 @@ func (self *Runtime) PrintGraph() {
 //
 // Prepare processes for start using graph definition
 //
-func (self *Runtime) prepareProcesses() error {
+func (r *Runtime) prepareProcesses() error {
 	// Create process structures for execution
 	nameLength := log.DefaultFactory.Padding
-	for name, p := range self.graph.Processes {
-		entry, err := self.registrar.Get(p.Component)
+	for name, p := range r.graph.Processes {
+		entry, err := r.registrar.Get(p.Component)
 		if err != nil {
 			return err
 		}
-		self.processes[name] = NewProcess(entry.Executable)
-		if self.Debug {
-			self.processes[name].Args["--debug"] = ""
+		r.processes[name] = NewProcess(entry.Executable)
+		if r.Debug {
+			r.processes[name].Args["--debug"] = ""
 		}
 		if len(name) > nameLength {
 			nameLength = len(name)
 		}
 	}
 	// Create ZMQ sockets for each unique port
-	var currentPort = self.initialTCPPort
+	var currentPort = r.initialTCPPort
 	var (
 		endpoint, srcEndpoint, tgtEndpoint string
 		index, srcIndex, tgtIndex          int
 	)
 	sockets := map[string]string{}
-	for _, c := range self.graph.Connections {
+	for _, c := range r.graph.Connections {
 		if c.Src == nil {
 			iip := ProcessIIP{
 				Payload: c.Data,
@@ -203,7 +203,7 @@ func (self *Runtime) prepareProcesses() error {
 				iip.Socket = s
 				sockets[endpoint] = s
 			}
-			self.iips = append(self.iips, iip)
+			r.iips = append(r.iips, iip)
 		} else {
 			srcIndex = 0
 			tgtIndex = 0
@@ -247,15 +247,15 @@ func (self *Runtime) prepareProcesses() error {
 	// Add sockets to component CLI arguments
 	for n, s := range arguments {
 		parts := strings.SplitN(n, ".", 2)
-		self.processes[parts[0]].Args["--port."+strings.ToLower(parts[1])] = strings.Join(s, ",")
-		if self.Debug {
+		r.processes[parts[0]].Args["--port."+strings.ToLower(parts[1])] = strings.Join(s, ",")
+		if r.Debug {
 			fmt.Println(n, s)
 		}
 	}
 
-	if self.Debug {
+	if r.Debug {
 		fmt.Println("--------- Executables ---------")
-		for n, p := range self.processes {
+		for n, p := range r.processes {
 			fmt.Printf("%s: %#v %#v\n", n, p.Executable, p.Arguments())
 		}
 		fmt.Println("-------------------------------")
@@ -269,23 +269,23 @@ func (self *Runtime) prepareProcesses() error {
 //
 // Start the network based on the current graph
 //
-func (self *Runtime) Start() {
-	err := self.prepareProcesses()
+func (r *Runtime) Start() {
+	err := r.prepareProcesses()
 	if err != nil {
 		log.ErrorOutput("Failed to create a process: " + err.Error())
-		self.Done <- true
+		r.Done <- true
 		return
 	}
 
-	if len(self.processes) == 0 {
+	if len(r.processes) == 0 {
 		log.SystemOutput("No processes to start")
-		self.Done <- true
+		r.Done <- true
 		return
 	}
 
 	log.SystemOutput("Starting processes...")
 	idx := 0
-	for name, ps := range self.processes {
+	for name, ps := range r.processes {
 		shutdownMutex.Lock()
 		procWaitGroup.Add(1)
 
@@ -297,11 +297,11 @@ func (self *Runtime) Start() {
 		go func(name string, ps *Process) {
 			ps.Wait()
 			procWaitGroup.Done()
-			delete(self.processes, name)
+			delete(r.processes, name)
 			fmt.Fprintln(ps.Stdout, "Stopped")
 			//TODO: check all connections with this process and send them shutdown commands as well
-			if !ps.cmd.ProcessState.Success() || len(self.processes) == 0 {
-				self.Shutdown()
+			if !ps.cmd.ProcessState.Success() || len(r.processes) == 0 {
+				r.Shutdown()
 			}
 
 		}(name, ps)
@@ -311,7 +311,7 @@ func (self *Runtime) Start() {
 		idx++
 	}
 
-	self.Activate()
+	r.Activate()
 
 	procWaitGroup.Wait()
 }
@@ -319,8 +319,8 @@ func (self *Runtime) Start() {
 //
 // Activate network by sending out all IIPs
 //
-func (self *Runtime) Activate() {
-	if len(self.iips) > 0 {
+func (r *Runtime) Activate() {
+	if len(r.iips) > 0 {
 		// Give some time to the network to deploy
 		//TODO: replace this with info from processes (check all entries in processes hash map)
 		time.Sleep(1 * time.Second)
@@ -330,7 +330,7 @@ func (self *Runtime) Activate() {
 		sender, _ := zmq.NewSocket(zmq.PUSH)
 		defer sender.Close()
 
-		for _, iip := range self.iips {
+		for _, iip := range r.iips {
 			log.SystemOutput(fmt.Sprintf("Sending '%s' to socket '%s'", iip.Payload, iip.Socket))
 			sender.Connect(iip.Socket)
 			sender.SendMessageDontwait(NewPacket([]byte(iip.Payload)))

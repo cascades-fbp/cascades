@@ -25,7 +25,7 @@ func (p *Process) Start() {
 }
 
 //
-// Send signal to a process
+// Signal sends signal to a process
 //
 func (p *Process) Signal(signal syscall.Signal) {
 	if p.Running() {

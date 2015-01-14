@@ -11,26 +11,26 @@ import (
 //
 // Shutdown the network
 //
-func (self *Runtime) Shutdown() {
+func (r *Runtime) Shutdown() {
 	log.SystemOutput("Shutdown...")
 
 	shutdownMutex.Lock()
-	for name, ps := range self.processes {
+	for name, ps := range r.processes {
 		log.SystemOutput(fmt.Sprintf("sending SIGTERM to %s", name))
 		ps.Signal(syscall.SIGTERM)
 	}
 
-	if len(self.processes) == 0 {
-		self.Done <- true
+	if len(r.processes) == 0 {
+		r.Done <- true
 	}
 
 	go func() {
 		time.Sleep(3 * time.Second)
-		for name, ps := range self.processes {
+		for name, ps := range r.processes {
 			log.SystemOutput(fmt.Sprintf("sending SIGKILL to %s", name))
 			ps.Signal(syscall.SIGKILL)
 		}
-		self.Done <- true
+		r.Done <- true
 	}()
 
 	shutdownMutex.Unlock()

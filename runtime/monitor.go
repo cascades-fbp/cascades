@@ -36,8 +36,8 @@ func MonitorSocket(socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
 				log.Println("Error receiving monitoring message:", err.Error())
 				return
 			}
-			eventId := zmq.Event(binary.LittleEndian.Uint16(data[0][:2]))
-			switch eventId {
+			eventID := zmq.Event(binary.LittleEndian.Uint16(data[0][:2]))
+			switch eventID {
 			case zmq.EVENT_CONNECTED:
 				log.Println("EVENT_CONNECTED", string(data[1]))
 			case zmq.EVENT_CONNECT_DELAYED:
@@ -59,16 +59,16 @@ func MonitorSocket(socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
 			case zmq.EVENT_DISCONNECTED:
 				log.Println("EVENT_DISCONNECTED", string(data[1]))
 			default:
-				log.Printf("Unsupported event id: %#v - Message: %#v", eventId, data)
+				log.Printf("Unsupported event id: %#v - Message: %#v", eventID, data)
 			}
-			monCh <- zmq.Event(eventId)
+			monCh <- zmq.Event(eventID)
 		}
 	}()
 	return monCh, socket.Monitor(endpoint, MONITOR_EVENTS)
 }
 
 //
-// This function is a helper shortcut to setup shutdown behavior once an accepted connection
+// SetupShutdownByDisconnect is a helper shortcut to setup shutdown behavior once an accepted connection
 // closes (disconnects).
 //
 func SetupShutdownByDisconnect(socket *zmq.Socket, name string, termChannel chan os.Signal) error {

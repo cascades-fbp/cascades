@@ -9,7 +9,7 @@ import (
 )
 
 //
-// Setup handling Ctrl+C (Interrup & SIGTERM sinals) in a separate go-routine.
+// HandleInterruption makes handling Ctrl+C (Interrup & SIGTERM sinals) in a separate go-routine.
 // When signal received exists with status code 0 with a slight delay.
 // Returns a created signal (if you need to force the exit in a proper way)
 //

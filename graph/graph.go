@@ -4,7 +4,8 @@ import (
 	"fmt"
 )
 
-type GraphDescription struct {
+// Description describes FBP network
+type Description struct {
 	Properties  map[string]string  `json:"properties"`
 	Processes   map[string]Process `json:"processes`
 	Connections []Connection       `json:"connections"`
@@ -12,11 +13,13 @@ type GraphDescription struct {
 	Outports    []Export           `json:"outports`
 }
 
+// Process of the network
 type Process struct {
 	Component string
 	Metadata  map[string]string `json:"omitempty"`
 }
 
+// Connection between processes in the network
 type Connection struct {
 	Data     string            `json:"data,omitempty"`
 	Src      *Endpoint         `json:"src,omitempty"`
@@ -24,19 +27,22 @@ type Connection struct {
 	Metadata map[string]string `json:"omitempty"`
 }
 
+// Endpoint of the process
 type Endpoint struct {
 	Process string `json:"process"`
 	Port    string `json:"port"`
 	Index   *int   `json:"index,omitempty"`
 }
 
+// Export exported port of the process
 type Export struct {
 	Private string `json:"private"`
 	Public  string `json:"public"`
 }
 
-func NewGraphDescription() *GraphDescription {
-	return &GraphDescription{
+// NewDescription is a Description constructor
+func NewDescription() *Description {
+	return &Description{
 		Properties:  make(map[string]string),
 		Processes:   make(map[string]Process),
 		Connections: []Connection{},

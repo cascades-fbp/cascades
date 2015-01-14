@@ -9,17 +9,19 @@ import (
 	"github.com/daviddengcn/go-colortext"
 )
 
-type LogFactory struct {
+// Factory is a factory of individual logs
+type Factory struct {
 	Logs    map[string]*Log
 	Padding int
 	Name    string
 }
 
+// Log represents a named colorful logger
 type Log struct {
 	Name    string
 	Color   ct.Color
 	IsError bool
-	Factory *LogFactory
+	Factory *Factory
 }
 
 var mx, sysMx sync.Mutex
@@ -34,20 +36,21 @@ var colors = []ct.Color{
 }
 
 // Default factory for creating loggers
-var DefaultFactory *LogFactory
+var DefaultFactory *Factory
 
-// Log factory constructor
-func NewLogFactory() (of *LogFactory) {
-	of = new(LogFactory)
+// NewFactory is a Log factory constructor
+func NewFactory() (of *Factory) {
+	of = new(Factory)
 	of.Logs = make(map[string]*Log)
 	return
 }
 
+// Println writes a given string to logger's stream
 func (o *Log) Println(str string) {
 	o.Write([]byte(str))
 }
 
-// Safe (using mutex) writing to a specific log
+// Write safely (using mutex) to a specific log
 func (o *Log) Write(b []byte) (num int, err error) {
 	mx.Lock()
 	defer mx.Unlock()
@@ -68,13 +71,14 @@ func (o *Log) Write(b []byte) (num int, err error) {
 	return
 }
 
-func (of *LogFactory) CreateLog(name string, index int, isError bool) *Log {
+// CreateLog create a new Log structure
+func (of *Factory) CreateLog(name string, index int, isError bool) *Log {
 	of.Logs[name] = &Log{name, colors[index%len(colors)], isError, of}
 	return of.Logs[name]
 }
 
-// Safe (using mutex) write to output (from system's name)
-func (of *LogFactory) SystemOutput(str string) {
+// SystemOutput prints a given string safely (using mutex) to output (from system's name)
+func (of *Factory) SystemOutput(str string) {
 	sysMx.Lock()
 	defer sysMx.Unlock()
 	ct.ChangeColor(ct.White, true, ct.None, false)
@@ -85,23 +89,25 @@ func (of *LogFactory) SystemOutput(str string) {
 	ct.ResetColor()
 }
 
-// Safe (using mutex) write to error output (from system's name)
-func (of *LogFactory) ErrorOutput(str string) {
+// ErrorOutput writes safely (using mutex) to error output (from system's name)
+func (of *Factory) ErrorOutput(str string) {
 	sysMx.Lock()
 	defer sysMx.Unlock()
 	fmt.Printf("ERROR: %s\n", str)
 }
 
 func init() {
-	DefaultFactory = NewLogFactory()
+	DefaultFactory = NewFactory()
 	DefaultFactory.Name = "runtime"
 	DefaultFactory.Padding = len(DefaultFactory.Name)
 }
 
+// SystemOutput writes output using default factory
 func SystemOutput(str string) {
 	DefaultFactory.SystemOutput(str)
 }
 
+// ErrorOutput writes error using default factory
 func ErrorOutput(str string) {
 	DefaultFactory.ErrorOutput(str)
 }

@@ -258,7 +258,7 @@ func addFileToLibrary(c *cli.Context, r library.Registrar, file string, name str
 	return nil
 }
 
-func graphToEntry(g *graph.GraphDescription, path string, r library.Registrar) (*library.Entry, error) {
+func graphToEntry(g *graph.Description, path string, r library.Registrar) (*library.Entry, error) {
 	entry := &library.Entry{
 		Executable:  path,
 		Description: g.Properties["name"],

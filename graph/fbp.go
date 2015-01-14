@@ -4,9 +4,9 @@ import (
 	"github.com/oleksandr/fbp"
 )
 
-// Parses a given definition in NoFlo's .fbp DSL and returns
-// unified GraphDescription structure
-func ParseFBP(definition []byte) (*GraphDescription, error) {
+// ParseFBP parses a given definition in NoFlo's .fbp DSL and returns
+// unified Description structure
+func ParseFBP(definition []byte) (*Description, error) {
 	// Parse .fbp file
 	parser := &fbp.Fbp{Buffer: string(definition)}
 	parser.Init()
@@ -20,7 +20,7 @@ func ParseFBP(definition []byte) (*GraphDescription, error) {
 	}
 
 	// Populate standard graph description structure
-	graph := NewGraphDescription()
+	graph := NewDescription()
 	for _, p := range parser.Processes {
 		graph.Processes[p.Name] = Process{
 			Component: p.Component,

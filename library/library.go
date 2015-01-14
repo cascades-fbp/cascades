@@ -5,11 +5,12 @@ import (
 )
 
 var (
-	NotFound = errors.New("Component not found")
+	// ErrNotFound describes a case when a component not found
+	ErrNotFound = errors.New("Component not found")
 )
 
 //
-// Defines the interface of components library
+// Registrar defines the interface of components library
 //
 type Registrar interface {
 	Add(entry Entry)
@@ -20,7 +21,7 @@ type Registrar interface {
 }
 
 //
-// Registry's entry
+// Entry of a registry
 //
 type Entry struct {
 	Name        string      `json:"name"`
@@ -31,6 +32,7 @@ type Entry struct {
 	Outports    []EntryPort `json:"outports"`
 }
 
+// FindInport looks for an input port by name
 func (entry *Entry) FindInport(name string) (EntryPort, bool) {
 	for _, p := range entry.Inports {
 		if p.Name == name {
@@ -40,6 +42,7 @@ func (entry *Entry) FindInport(name string) (EntryPort, bool) {
 	return EntryPort{}, false
 }
 
+// FindOutport loos for an output port by name
 func (entry *Entry) FindOutport(name string) (EntryPort, bool) {
 	for _, p := range entry.Outports {
 		if p.Name == name {
@@ -49,9 +52,7 @@ func (entry *Entry) FindOutport(name string) (EntryPort, bool) {
 	return EntryPort{}, false
 }
 
-//
-// Entry's port data
-//
+// EntryPort represents entry's port description
 type EntryPort struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`

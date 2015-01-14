@@ -8,7 +8,7 @@ import (
 	"github.com/cascades-fbp/cascades/graph"
 )
 
-func loadGraph(graphfile string) (g *graph.GraphDescription, err error) {
+func loadGraph(graphfile string) (g *graph.Description, err error) {
 	data, err := ioutil.ReadFile(graphfile)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read graph definition from file: %s", err.Error())

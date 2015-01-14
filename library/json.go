@@ -7,7 +7,7 @@ import (
 )
 
 //
-// JSON library implements Registrar interface
+// JSONLibrary implements Registrar interface
 //
 type JSONLibrary struct {
 	Name    string           `json:"name"`
@@ -16,7 +16,8 @@ type JSONLibrary struct {
 	Updated time.Time        `json:"updated"`
 }
 
-func (self JSONLibrary) Add(entry Entry) {
+// Add a new entry to library
+func (l JSONLibrary) Add(entry Entry) {
 	inports := []EntryPort{}
 	outports := []EntryPort{}
 	for _, p := range entry.Inports {
@@ -29,24 +30,27 @@ func (self JSONLibrary) Add(entry Entry) {
 	}
 	entry.Inports = inports
 	entry.Outports = outports
-	self.Entries[entry.Name] = entry
+	l.Entries[entry.Name] = entry
 }
 
-func (self JSONLibrary) Exists(name string) bool {
-	_, ok := self.Entries[name]
+// Exists returns true if an entry with a given name already exists
+func (l JSONLibrary) Exists(name string) bool {
+	_, ok := l.Entries[name]
 	return ok
 }
 
-func (self JSONLibrary) Get(name string) (Entry, error) {
-	if entry, ok := self.Entries[name]; ok {
+// Get returns an entry by given name
+func (l JSONLibrary) Get(name string) (Entry, error) {
+	if entry, ok := l.Entries[name]; ok {
 		return entry, nil
 	}
-	return Entry{}, NotFound
+	return Entry{}, ErrNotFound
 }
 
-func (self JSONLibrary) Find(term string) map[string]Entry {
+// Find returns a map of entries which name contains a given term
+func (l JSONLibrary) Find(term string) map[string]Entry {
 	results := map[string]Entry{}
-	for name, e := range self.Entries {
+	for name, e := range l.Entries {
 		if strings.Contains(name, term) {
 			results[name] = e
 		}
@@ -54,19 +58,17 @@ func (self JSONLibrary) Find(term string) map[string]Entry {
 	return results
 }
 
-func (self JSONLibrary) List() map[string]Entry {
-	return self.Entries
+// List returns a complete entries map
+func (l JSONLibrary) List() map[string]Entry {
+	return l.Entries
 }
 
-//
-// A shortcut to JSON serialization
-//
-func (self JSONLibrary) JSON() ([]byte, error) {
-	return json.MarshalIndent(self, "", "   ")
+// JSON is a shortcut to JSON serialization
+func (l JSONLibrary) JSON() ([]byte, error) {
+	return json.MarshalIndent(l, "", "   ")
 }
 
-//
-// A shortcut for JSON serialization
-func (self Entry) JSON() ([]byte, error) {
-	return json.Marshal(self)
+// JSON is a shortcut for JSON serialization
+func (e Entry) JSON() ([]byte, error) {
+	return json.Marshal(e)
 }
