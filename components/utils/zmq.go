@@ -24,16 +24,16 @@ func AssertError(err error) {
 }
 
 // CreateInputPort creates a ZMQ PULL socket & bind to a given endpoint
-func CreateInputPort(name string, endpoint string, portClosedCh chan<- bool) (socket *zmq.Socket, err error) {
+func CreateInputPort(name string, endpoint string, monitCh chan<- bool) (socket *zmq.Socket, err error) {
 	socket, err = zmq.NewSocket(zmq.PULL)
 	if err != nil {
 		return nil, err
 	}
-	if portClosedCh == nil {
+	if monitCh == nil {
 		return socket, socket.Bind(endpoint)
 	}
 
-	monitCh, err := MonitorSocket(socket, name)
+	ch, err := MonitorSocket(socket, name)
 	if err != nil {
 		return nil, err
 	}
@@ -42,19 +42,18 @@ func CreateInputPort(name string, endpoint string, portClosedCh chan<- bool) (so
 		return nil, err
 	}
 
-	ch := make(chan bool)
 	go func() {
 		c := 0
-		for e := range monitCh {
+		for e := range ch {
 			if e == zmq.EVENT_ACCEPTED {
 				c++
 				if c == 1 {
-					ch <- true
+					monitCh <- true
 				}
 			} else if e == zmq.EVENT_CLOSED || e == zmq.EVENT_DISCONNECTED {
 				c--
 				if c == 0 {
-					portClosedCh <- true
+					monitCh <- false
 				}
 			}
 			if c < 0 {
@@ -63,28 +62,20 @@ func CreateInputPort(name string, endpoint string, portClosedCh chan<- bool) (so
 		}
 	}()
 
-	log.Println("Waiting for input port connection to establish... ")
-	select {
-	case <-ch:
-		log.Println("Input port connected (EVENT_ACCEPTED)")
-	case <-time.Tick(30 * time.Second):
-		return nil, fmt.Errorf("Timeout: input port connection was not established within provided interval")
-	}
-
 	return socket, nil
 }
 
 // CreateOutputPort creates a ZMQ PUSH socket & connect to a given endpoint
-func CreateOutputPort(name string, endpoint string, portClosedCh chan<- bool) (socket *zmq.Socket, err error) {
+func CreateOutputPort(name string, endpoint string, monitCh chan<- bool) (socket *zmq.Socket, err error) {
 	socket, err = zmq.NewSocket(zmq.PUSH)
 	if err != nil {
 		return nil, err
 	}
-	if portClosedCh == nil {
+	if monitCh == nil {
 		return socket, socket.Connect(endpoint)
 	}
 
-	monitCh, err := MonitorSocket(socket, name)
+	ch, err := MonitorSocket(socket, name)
 	if err != nil {
 		return nil, err
 	}
@@ -93,19 +84,18 @@ func CreateOutputPort(name string, endpoint string, portClosedCh chan<- bool) (s
 		return nil, err
 	}
 
-	ch := make(chan bool)
 	go func() {
 		c := 0
-		for e := range monitCh {
+		for e := range ch {
 			if e == zmq.EVENT_ACCEPTED || e == zmq.EVENT_CONNECTED {
 				c++
 				if c == 1 {
-					ch <- true
+					monitCh <- true
 				}
 			} else if e == zmq.EVENT_CLOSED || e == zmq.EVENT_DISCONNECTED {
 				c--
 				if c == 0 {
-					portClosedCh <- true
+					monitCh <- false
 				}
 			}
 			if c < 0 {
@@ -113,14 +103,6 @@ func CreateOutputPort(name string, endpoint string, portClosedCh chan<- bool) (s
 			}
 		}
 	}()
-
-	log.Println("Waiting for input port connection to establish... ")
-	select {
-	case <-ch:
-		log.Println("Output port connected (EVENT_CONNECTED)")
-	case <-time.Tick(30 * time.Second):
-		return nil, fmt.Errorf("Timeout: output port connection was not established within provided interval")
-	}
 
 	return socket, nil
 }

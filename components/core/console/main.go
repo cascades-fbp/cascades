@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -60,16 +61,35 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
 	inCh = make(chan bool)
-	go func() {
-		<-inCh
-		log.Println("IN port is closed. Interrupting execution")
-		ch <- syscall.SIGTERM
-	}()
+	ch := utils.HandleInterruption()
 
 	openPorts()
 	defer closePorts()
+
+	waitCh := make(chan bool)
+	go func() {
+		for {
+			v := <-inCh
+			if v && waitCh != nil {
+				waitCh <- true
+			}
+			if !v {
+				log.Println("IN port is closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+			}
+		}
+	}()
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Input port connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	log.Println("Started...")
 	for {

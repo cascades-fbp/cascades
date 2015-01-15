@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -91,23 +92,49 @@ func main() {
 	ch := utils.HandleInterruption()
 	inCh = make(chan bool)
 	outCh = make(chan bool)
-	closed := 0
-	go func() {
-		select {
-		case <-inCh:
-			closed++
-			if closed == len(inPortArray) {
-				log.Println("IN array port is closed. Interrupting execution")
-				ch <- syscall.SIGTERM
-			}
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
 
 	openPorts()
 	defer closePorts()
+
+	waitCh := make(chan bool)
+	go func(num int) {
+		total := 0
+		for {
+			select {
+			case v := <-inCh:
+				if v {
+					total++
+				} else {
+					total--
+				}
+			case v := <-outCh:
+				if !v {
+					log.Println("OUT port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+					break
+				} else {
+					total++
+				}
+			}
+			if total >= num && waitCh != nil {
+				waitCh <- true
+			} else if total <= 1 && waitCh == nil {
+				log.Println("All input ports closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+				break
+			}
+		}
+	}(len(inPortArray) + 1)
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	log.Println("Started...")
 	var (

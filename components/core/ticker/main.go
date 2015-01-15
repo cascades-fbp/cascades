@@ -72,14 +72,33 @@ func main() {
 
 	ch := utils.HandleInterruption()
 	outCh = make(chan bool)
-	go func() {
-		<-outCh
-		log.Println("OUT port is closed. Interrupting execution")
-		ch <- syscall.SIGTERM
-	}()
 
 	openPorts()
 	defer closePorts()
+
+	waitCh := make(chan bool)
+	go func() {
+		for {
+			v := <-outCh
+			if v && waitCh != nil {
+				waitCh <- true
+			}
+			if !v {
+				log.Println("OUT port is closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+			}
+		}
+	}()
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Output port connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	log.Println("Wait for configuration IP...")
 	var interval time.Duration
@@ -107,7 +126,6 @@ func main() {
 
 	for v := range ticker.C {
 		msg := fmt.Sprintf("%v", v.Unix())
-		log.Println(msg)
 		outPort.SendMessage(runtime.NewPacket([]byte(msg)))
 	}
 }

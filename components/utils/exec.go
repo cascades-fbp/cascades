@@ -18,7 +18,7 @@ func HandleInterruption() chan os.Signal {
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		for _ = range ch {
-			log.Println("Give 0MQ time to deliver before stopping...")
+			// Give 0MQ time to deliver before stopping...
 			time.Sleep(1e9)
 			log.Println("Stopped")
 			os.Exit(0)

@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -20,9 +21,9 @@ var (
 	debug         = flag.Bool("debug", false, "Enable debug mode")
 
 	// Internal
-	inPort  *zmq.Socket
-	closeCh chan bool
-	err     error
+	inPort *zmq.Socket
+	inCh   chan bool
+	err    error
 )
 
 func validateArgs() {
@@ -33,7 +34,7 @@ func validateArgs() {
 }
 
 func openPorts() {
-	inPort, err = utils.CreateInputPort("drop.in", *inputEndpoint, closeCh)
+	inPort, err = utils.CreateInputPort("drop.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 }
 
@@ -60,15 +61,35 @@ func main() {
 
 	validateArgs()
 
+	inCh = make(chan bool)
 	ch := utils.HandleInterruption()
-	closeCh = make(chan bool)
-	go func() {
-		<-closeCh
-		ch <- syscall.SIGTERM
-	}()
 
 	openPorts()
 	defer closePorts()
+
+	waitCh := make(chan bool)
+	go func() {
+		for {
+			v := <-inCh
+			if v && waitCh != nil {
+				waitCh <- true
+			}
+			if !v {
+				log.Println("IN port is closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+			}
+		}
+	}()
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Input port connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	log.Println("Started...")
 	for {

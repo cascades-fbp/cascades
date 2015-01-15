@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -83,22 +84,60 @@ func main() {
 	cmdCh = make(chan bool)
 	outCh = make(chan bool)
 	errCh = make(chan bool)
-	go func() {
-		select {
-		case <-cmdCh:
-			log.Println("CMD port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-errCh:
-			log.Println("ERR port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
 
 	openPorts()
 	defer closePorts()
+
+	ports := 1
+	if outPort != nil {
+		ports++
+	}
+	if errPort != nil {
+		ports++
+	}
+
+	waitCh := make(chan bool)
+	cmdExitCh := make(chan bool, 1)
+	go func(num int) {
+		total := 0
+		for {
+			select {
+			case v := <-cmdCh:
+				if v {
+					total++
+				} else {
+					cmdExitCh <- true
+				}
+			case v := <-outCh:
+				if !v {
+					log.Println("OUT port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-errCh:
+				if !v {
+					log.Println("ERR port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			}
+			if total >= num && waitCh != nil {
+				waitCh <- true
+			}
+		}
+	}(ports)
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	log.Println("Started...")
 	for {
@@ -122,6 +161,15 @@ func main() {
 		log.Println(string(out))
 		if outPort != nil {
 			outPort.SendMessage(runtime.NewPacket(out))
+		}
+
+		select {
+		case <-cmdExitCh:
+			log.Println("CMD port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+			break
+		default:
+			// IN port is still open
 		}
 	}
 }

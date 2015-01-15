@@ -93,7 +93,6 @@ func main() {
 		}
 	}()
 
-	openPorts()
 	defer closePorts()
 
 	// Start a separate goroutine to receive gate signals and avoid stocking them
@@ -126,6 +125,8 @@ func main() {
 			}
 		}
 	}()
+
+	openPorts()
 
 	log.Println("Started...")
 	var (
