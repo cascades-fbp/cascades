@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 	"text/template"
 
 	"github.com/cascades-fbp/cascades/components/utils"
@@ -25,6 +26,7 @@ var (
 
 	// Internal
 	tplPort, inPort, outPort *zmq.Socket
+	inCh, outCh              chan bool
 	err                      error
 )
 
@@ -43,14 +45,14 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	tplPort, err = utils.CreateInputPort(*tplEndpoint)
+func openPorts() {
+	tplPort, err = utils.CreateInputPort("template.tpl", *tplEndpoint, nil)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateMonitoredInputPort("template.in", *inputEndpoint, termCh)
+	inPort, err = utils.CreateInputPort("template.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateMonitoredOutputPort("template.out", *outputEndpoint, termCh)
+	outPort, err = utils.CreateOutputPort("template.out", *outputEndpoint, outCh)
 	utils.AssertError(err)
 }
 
@@ -80,7 +82,20 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	inCh = make(chan bool)
+	outCh = make(chan bool)
+	go func() {
+		select {
+		case <-inCh:
+			log.Println("IN port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-outCh:
+			log.Println("OUT port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Waiting for template...")
@@ -106,6 +121,7 @@ func main() {
 		}
 		break
 	}
+	tplPort.Close()
 
 	log.Println("Started...")
 	var (

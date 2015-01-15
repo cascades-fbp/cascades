@@ -36,10 +36,10 @@ func validateArgs() {
 }
 
 func openPorts() {
-	inPort, err = utils.CreateInputPort(*valueEndpoint)
+	inPort, err = utils.CreateInputPort("oneshot.in", *valueEndpoint, nil)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateOutputPort(*outputEndpoint)
+	outPort, err = utils.CreateOutputPort("oneshot.out", *outputEndpoint, nil)
 	utils.AssertError(err)
 }
 
@@ -84,6 +84,7 @@ func main() {
 		}
 		break
 	}
+	inPort.Close()
 
 	log.Println("Started...")
 

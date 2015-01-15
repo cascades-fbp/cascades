@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"syscall"
 	"time"
 
 	zmq "github.com/pebbe/zmq4"
@@ -25,21 +24,16 @@ func AssertError(err error) {
 }
 
 // CreateInputPort creates a ZMQ PULL socket & bind to a given endpoint
-func CreateInputPort(endpoint string) (socket *zmq.Socket, err error) {
-	return CreateMonitoredInputPort("", endpoint, nil)
-}
-
-// CreateMonitoredInputPort creates a ZMQ PULL socket & bind to a given endpoint
-func CreateMonitoredInputPort(name string, endpoint string, termChannel chan os.Signal) (socket *zmq.Socket, err error) {
+func CreateInputPort(name string, endpoint string, portClosedCh chan<- bool) (socket *zmq.Socket, err error) {
 	socket, err = zmq.NewSocket(zmq.PULL)
 	if err != nil {
 		return nil, err
 	}
-	if termChannel == nil {
+	if portClosedCh == nil {
 		return socket, socket.Bind(endpoint)
 	}
 
-	ch, err := MonitorSocket(socket, name)
+	monitCh, err := MonitorSocket(socket, name)
 	if err != nil {
 		return nil, err
 	}
@@ -48,41 +42,49 @@ func CreateMonitoredInputPort(name string, endpoint string, termChannel chan os.
 		return nil, err
 	}
 
-	log.Println("Waiting for input port connection to establish... ")
-	for connected := false; !connected; {
-		select {
-		case e := <-ch:
+	ch := make(chan bool)
+	go func() {
+		c := 0
+		for e := range monitCh {
 			if e == zmq.EVENT_ACCEPTED {
-				log.Println("Input port connected (EVENT_ACCEPTED)")
-				connected = true
+				c++
+				if c == 1 {
+					ch <- true
+				}
+			} else if e == zmq.EVENT_CLOSED || e == zmq.EVENT_DISCONNECTED {
+				c--
+				if c == 0 {
+					portClosedCh <- true
+				}
 			}
-			//log.Println(">> IN:", e)
-		case <-time.Tick(30 * time.Second):
-			return nil, fmt.Errorf("Timeout: input port connection was not established within provided interval")
+			if c < 0 {
+				c = 0
+			}
 		}
-	}
+	}()
 
-	go shutdownByDisconnect(ch, termChannel)
+	log.Println("Waiting for input port connection to establish... ")
+	select {
+	case <-ch:
+		log.Println("Input port connected (EVENT_ACCEPTED)")
+	case <-time.Tick(30 * time.Second):
+		return nil, fmt.Errorf("Timeout: input port connection was not established within provided interval")
+	}
 
 	return socket, nil
 }
 
 // CreateOutputPort creates a ZMQ PUSH socket & connect to a given endpoint
-func CreateOutputPort(endpoint string) (socket *zmq.Socket, err error) {
-	return CreateMonitoredOutputPort("", endpoint, nil)
-}
-
-// CreateMonitoredOutputPort creates a ZMQ PUSH socket & connect to a given endpoint
-func CreateMonitoredOutputPort(name string, endpoint string, termChannel chan os.Signal) (socket *zmq.Socket, err error) {
+func CreateOutputPort(name string, endpoint string, portClosedCh chan<- bool) (socket *zmq.Socket, err error) {
 	socket, err = zmq.NewSocket(zmq.PUSH)
 	if err != nil {
 		return nil, err
 	}
-	if termChannel == nil {
+	if portClosedCh == nil {
 		return socket, socket.Connect(endpoint)
 	}
 
-	ch, err := MonitorSocket(socket, name)
+	monitCh, err := MonitorSocket(socket, name)
 	if err != nil {
 		return nil, err
 	}
@@ -91,49 +93,36 @@ func CreateMonitoredOutputPort(name string, endpoint string, termChannel chan os
 		return nil, err
 	}
 
-	log.Println("Waiting for output port connection to establish... ")
-	for connected := false; !connected; {
-		select {
-		case e := <-ch:
-			if e == zmq.EVENT_CONNECTED {
-				log.Println("Output port connected (EVENT_CONNECTED)")
-				connected = true
+	ch := make(chan bool)
+	go func() {
+		c := 0
+		for e := range monitCh {
+			if e == zmq.EVENT_ACCEPTED || e == zmq.EVENT_CONNECTED {
+				c++
+				if c == 1 {
+					ch <- true
+				}
+			} else if e == zmq.EVENT_CLOSED || e == zmq.EVENT_DISCONNECTED {
+				c--
+				if c == 0 {
+					portClosedCh <- true
+				}
 			}
-			//log.Println(">> OUT:", e)
-		case <-time.Tick(30 * time.Second):
-			return nil, fmt.Errorf("Timeout: output port connection was not established within provided interval")
+			if c < 0 {
+				c = 0
+			}
 		}
-	}
+	}()
 
-	go shutdownByDisconnect(ch, termChannel)
+	log.Println("Waiting for input port connection to establish... ")
+	select {
+	case <-ch:
+		log.Println("Output port connected (EVENT_CONNECTED)")
+	case <-time.Tick(30 * time.Second):
+		return nil, fmt.Errorf("Timeout: output port connection was not established within provided interval")
+	}
 
 	return socket, nil
-}
-
-//
-// SetupShutdownByDisconnect is a helper shortcut to setup shutdown behavior once an accepted connection
-// closes (disconnects).
-//
-func shutdownByDisconnect(eventChannel <-chan zmq.Event, termChannel chan os.Signal) {
-	connections := 0
-	for e := range eventChannel {
-		switch e {
-		case zmq.EVENT_ACCEPTED:
-			connections++
-			log.Println("Accepted connection to a socket. Total number of connections:", connections)
-		case zmq.EVENT_DISCONNECTED:
-			connections--
-			log.Println("Client disconnected from a socket. Total number of connections:", connections)
-		case zmq.EVENT_CLOSED:
-			connections--
-			log.Println("Connection's underlying descriptor has been closed. Total number of connections:", connections)
-		}
-		if connections <= 0 {
-			log.Println("No connections. Sending termination signal...")
-			termChannel <- syscall.SIGTERM
-			break
-		}
-	}
 }
 
 //

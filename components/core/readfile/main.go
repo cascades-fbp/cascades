@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -23,6 +24,7 @@ var (
 
 	// Internal
 	filePort, outPort, errPort *zmq.Socket
+	fileCh, outCh, errCh       chan bool
 	err                        error
 )
 
@@ -37,15 +39,15 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	filePort, err = utils.CreateMonitoredInputPort("readfile.file", *fileEndpoint, termCh)
+func openPorts() {
+	filePort, err = utils.CreateInputPort("readfile.file", *fileEndpoint, fileCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateMonitoredOutputPort("readfile.out", *outputEndpoint, termCh)
+	outPort, err = utils.CreateOutputPort("readfile.out", *outputEndpoint, outCh)
 	utils.AssertError(err)
 
 	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort(*errorEndpoint)
+		errPort, err = utils.CreateOutputPort("readfile.err", *errorEndpoint, errCh)
 		utils.AssertError(err)
 	}
 }
@@ -78,7 +80,21 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	fileCh = make(chan bool)
+	outCh = make(chan bool)
+	errCh = make(chan bool)
+	go func() {
+		select {
+		case <-outCh:
+			log.Println("OUT port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-errCh:
+			log.Println("ERR port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Started...")
@@ -115,5 +131,14 @@ func main() {
 		f.Close()
 
 		outPort.SendMessage(runtime.NewCloseBracket())
+
+		select {
+		case <-fileCh:
+			log.Println("FILE port is closed. Closing port")
+			ch <- syscall.SIGTERM
+			break
+		default:
+			// file port is still open
+		}
 	}
 }

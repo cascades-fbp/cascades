@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
@@ -23,6 +24,7 @@ var (
 
 	// Internal
 	inPort, gatePort, outPort *zmq.Socket
+	inCh, gateCh, outCh       chan bool
 	err                       error
 )
 
@@ -41,11 +43,11 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	inPort, err = utils.CreateMonitoredInputPort("switch.in", *inputEndpoint, termCh)
+func openPorts() {
+	inPort, err = utils.CreateInputPort("switch.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateMonitoredOutputPort("switch.out", *outputEndpoint, termCh)
+	outPort, err = utils.CreateOutputPort("switch.out", *outputEndpoint, outCh)
 	utils.AssertError(err)
 }
 
@@ -74,7 +76,24 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	gateCh = make(chan bool)
+	inCh = make(chan bool)
+	outCh = make(chan bool)
+	go func() {
+		select {
+		case <-gateCh:
+			log.Println("GATE port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-inCh:
+			log.Println("IN port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-outCh:
+			log.Println("OUT port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	// Start a separate goroutine to receive gate signals and avoid stocking them
@@ -82,7 +101,7 @@ func main() {
 	tickCh := make(chan bool)
 	go func() {
 		//  Socket to receive signal on
-		gatePort, err = utils.CreateMonitoredInputPort("switch.gate", *gateEndpoint, ch)
+		gatePort, err = utils.CreateInputPort("switch.gate", *gateEndpoint, gateCh)
 		utils.AssertError(err)
 		defer gatePort.Close()
 

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"syscall"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -24,6 +25,7 @@ var (
 
 	// Internal
 	patternPort, inPort, mapPort *zmq.Socket
+	patCh, inCh, mapCh           chan bool
 	err                          error
 )
 
@@ -62,14 +64,14 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	patternPort, err = utils.CreateInputPort(*patternEndpoint)
+func openPorts() {
+	patternPort, err = utils.CreateInputPort("submatch.pattern", *patternEndpoint, nil)
 	utils.AssertError(err)
 
-	inPort, err = utils.CreateMonitoredInputPort("submatch.in", *inputEndpoint, termCh)
+	inPort, err = utils.CreateInputPort("submatch.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 
-	mapPort, err = utils.CreateMonitoredOutputPort("submatch.map", *mapEndpoint, termCh)
+	mapPort, err = utils.CreateOutputPort("submatch.map", *mapEndpoint, mapCh)
 	utils.AssertError(err)
 }
 
@@ -99,7 +101,20 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	inCh = make(chan bool)
+	mapCh = make(chan bool)
+	go func() {
+		select {
+		case <-inCh:
+			log.Println("IN port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-mapCh:
+			log.Println("MAP port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Waiting for pattern...")
@@ -121,6 +136,7 @@ func main() {
 		pattern = mainRegexp{regexp.MustCompile(string(ip[1]))}
 		break
 	}
+	patternPort.Close()
 
 	log.Println("Started...")
 	for {

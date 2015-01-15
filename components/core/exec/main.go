@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -23,6 +24,7 @@ var (
 
 	// Internal
 	cmdPort, outPort, errPort *zmq.Socket
+	cmdCh, outCh, errCh       chan bool
 	err                       error
 )
 
@@ -33,17 +35,17 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	cmdPort, err = utils.CreateMonitoredInputPort("exec.cmd", *cmdEndpoint, termCh)
+func openPorts() {
+	cmdPort, err = utils.CreateInputPort("exec.cmd", *cmdEndpoint, cmdCh)
 	utils.AssertError(err)
 
 	if *outputEndpoint != "" {
-		outPort, err = utils.CreateOutputPort(*outputEndpoint)
+		outPort, err = utils.CreateOutputPort("exec.out", *outputEndpoint, outCh)
 		utils.AssertError(err)
 	}
 
 	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort(*errorEndpoint)
+		errPort, err = utils.CreateOutputPort("exec.err", *errorEndpoint, errCh)
 		utils.AssertError(err)
 	}
 }
@@ -78,7 +80,24 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	cmdCh = make(chan bool)
+	outCh = make(chan bool)
+	errCh = make(chan bool)
+	go func() {
+		select {
+		case <-cmdCh:
+			log.Println("CMD port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-outCh:
+			log.Println("OUT port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-errCh:
+			log.Println("ERR port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Started...")

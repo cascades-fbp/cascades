@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -23,6 +24,7 @@ var (
 	// Internal
 	outPortArray []*zmq.Socket
 	inPort, port *zmq.Socket
+	inCh, outCh  chan bool
 	err          error
 )
 
@@ -37,21 +39,21 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
+func openPorts() {
 	outports := strings.Split(*outputEndpoint, ",")
 	if len(outports) == 0 {
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	inPort, err = utils.CreateMonitoredInputPort("splitter.in", *inputEndpoint, termCh)
+	inPort, err = utils.CreateInputPort("splitter.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 
 	outPortArray = []*zmq.Socket{}
 	for i, endpoint := range outports {
 		endpoint = strings.TrimSpace(endpoint)
 		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
-		port, err = utils.CreateMonitoredOutputPort(fmt.Sprintf("splitter.out[%v]", i), endpoint, termCh)
+		port, err = utils.CreateOutputPort(fmt.Sprintf("splitter.out[%v]", i), endpoint, outCh)
 		outPortArray = append(outPortArray, port)
 	}
 }
@@ -83,7 +85,24 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	inCh = make(chan bool)
+	outCh = make(chan bool)
+	closed := 0
+	go func() {
+		select {
+		case <-inCh:
+			log.Println("IN port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-outCh:
+			closed++
+			if closed == len(outPortArray) {
+				log.Println("OUT array port is closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+			}
+		}
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Started...")

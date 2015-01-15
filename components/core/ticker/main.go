@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
@@ -22,6 +23,7 @@ var (
 
 	// Internal
 	intervalPort, outPort *zmq.Socket
+	outCh                 chan bool
 	err                   error
 )
 
@@ -36,11 +38,11 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	intervalPort, err = utils.CreateInputPort(*intervalEndpoint)
+func openPorts() {
+	intervalPort, err = utils.CreateInputPort("ticker.interval", *intervalEndpoint, nil)
 	utils.AssertError(err)
 
-	outPort, err = utils.CreateMonitoredOutputPort("ticker.out", *outputEndpoint, termCh)
+	outPort, err = utils.CreateOutputPort("ticker.out", *outputEndpoint, outCh)
 	utils.AssertError(err)
 }
 
@@ -69,7 +71,14 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	outCh = make(chan bool)
+	go func() {
+		<-outCh
+		log.Println("OUT port is closed. Interrupting execution")
+		ch <- syscall.SIGTERM
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Wait for configuration IP...")
@@ -90,6 +99,7 @@ func main() {
 		}
 		break
 	}
+	intervalPort.Close()
 
 	log.Println("Started...")
 	ticker := time.NewTicker(interval)

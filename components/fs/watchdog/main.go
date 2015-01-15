@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -24,6 +25,7 @@ var (
 
 	// Internal
 	inPort, outPort, errPort *zmq.Socket
+	outCh, errCh             chan bool
 	ip                       [][]byte
 	err                      error
 )
@@ -40,11 +42,11 @@ func validateArgs() {
 }
 
 func openPorts() {
-	inPort, err = utils.CreateInputPort(*inputEndpoint)
+	inPort, err = utils.CreateInputPort("fs/watchdog.in", *inputEndpoint, nil)
 	utils.AssertError(err)
 
 	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort(*errorEndpoint)
+		errPort, err = utils.CreateOutputPort("fs/watchdog.err", *errorEndpoint, errCh)
 		utils.AssertError(err)
 	}
 }
@@ -86,10 +88,22 @@ func main() {
 
 	validateArgs()
 
+	ch := utils.HandleInterruption()
+	outCh = make(chan bool)
+	errCh = make(chan bool)
+	go func() {
+		select {
+		case <-outCh:
+			log.Println("OUT port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-errCh:
+			log.Println("ERR port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
+
 	openPorts()
 	defer closePorts()
-
-	ch := utils.HandleInterruption()
 
 	// Setup watcher
 	watcher, err := fsnotify.NewWatcher()
@@ -99,7 +113,7 @@ func main() {
 	// Process events
 	go func() {
 		//  Socket to send messages to task sink
-		outPort, err = utils.CreateMonitoredOutputPort("fs/watchdog.out", *outputEndpoint, ch)
+		outPort, err = utils.CreateOutputPort("fs/watchdog.out", *outputEndpoint, errCh)
 		utils.AssertError(err)
 		for {
 			select {

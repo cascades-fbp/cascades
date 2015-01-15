@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"syscall"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -20,6 +21,7 @@ var (
 
 	// Internal
 	inPort *zmq.Socket
+	inCh   chan bool
 	err    error
 )
 
@@ -30,8 +32,8 @@ func validateArgs() {
 	}
 }
 
-func openPorts(termCh chan os.Signal) {
-	inPort, err = utils.CreateMonitoredInputPort("console.in", *inputEndpoint, termCh)
+func openPorts() {
+	inPort, err = utils.CreateInputPort("console.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 }
 
@@ -59,7 +61,14 @@ func main() {
 	validateArgs()
 
 	ch := utils.HandleInterruption()
-	openPorts(ch)
+	inCh = make(chan bool)
+	go func() {
+		<-inCh
+		log.Println("IN port is closed. Interrupting execution")
+		ch <- syscall.SIGTERM
+	}()
+
+	openPorts()
 	defer closePorts()
 
 	log.Println("Started...")
