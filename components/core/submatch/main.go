@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -25,7 +26,7 @@ var (
 
 	// Internal
 	patternPort, inPort, mapPort *zmq.Socket
-	patCh, inCh, mapCh           chan bool
+	inCh, mapCh                  chan bool
 	err                          error
 )
 
@@ -103,19 +104,45 @@ func main() {
 	ch := utils.HandleInterruption()
 	inCh = make(chan bool)
 	mapCh = make(chan bool)
-	go func() {
-		select {
-		case <-inCh:
-			log.Println("IN port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-mapCh:
-			log.Println("MAP port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
 
 	openPorts()
 	defer closePorts()
+
+	waitCh := make(chan bool)
+	go func() {
+		total := 0
+		for {
+			select {
+			case v := <-inCh:
+				if !v {
+					log.Println("IN port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-mapCh:
+				if !v {
+					log.Println("MAP port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			}
+			if total >= 2 && waitCh != nil {
+				waitCh <- true
+			}
+		}
+	}()
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
 
 	log.Println("Waiting for pattern...")
 	var (

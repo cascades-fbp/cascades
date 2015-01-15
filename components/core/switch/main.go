@@ -79,21 +79,6 @@ func main() {
 	gateCh = make(chan bool)
 	inCh = make(chan bool)
 	outCh = make(chan bool)
-	go func() {
-		select {
-		case <-gateCh:
-			log.Println("GATE port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-inCh:
-			log.Println("IN port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
-
-	defer closePorts()
 
 	// Start a separate goroutine to receive gate signals and avoid stocking them
 	// blocking the channel (use timeout to skip ticks if data sending is still in progress)
@@ -127,6 +112,64 @@ func main() {
 	}()
 
 	openPorts()
+	defer closePorts()
+
+	waitCh := make(chan bool)
+	go func() {
+		total := 0
+		for {
+			select {
+			case v := <-gateCh:
+				if !v {
+					log.Println("GATE port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-inCh:
+				if !v {
+					log.Println("IN port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-outCh:
+				if !v {
+					log.Println("OUT port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			}
+			if total >= 3 && waitCh != nil {
+				waitCh <- true
+			}
+		}
+	}()
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
+
+	go func() {
+		select {
+		case <-gateCh:
+			log.Println("GATE port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-inCh:
+			log.Println("IN port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		case <-outCh:
+			log.Println("OUT port is closed. Interrupting execution")
+			ch <- syscall.SIGTERM
+		}
+	}()
 
 	log.Println("Started...")
 	var (

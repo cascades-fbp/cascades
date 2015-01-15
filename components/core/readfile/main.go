@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -83,25 +84,74 @@ func main() {
 	fileCh = make(chan bool)
 	outCh = make(chan bool)
 	errCh = make(chan bool)
-	go func() {
-		select {
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-errCh:
-			log.Println("ERR port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
 
 	openPorts()
 	defer closePorts()
 
+	ports := 1
+	if outPort != nil {
+		ports++
+	}
+	if errPort != nil {
+		ports++
+	}
+
+	waitCh := make(chan bool)
+	fileExitCh := make(chan bool, 1)
+	go func(num int) {
+		total := 0
+		for {
+			select {
+			case v := <-fileCh:
+				if v {
+					total++
+				} else {
+					fileExitCh <- true
+				}
+			case v := <-outCh:
+				if !v {
+					log.Println("OUT port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-errCh:
+				if !v {
+					log.Println("ERR port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			}
+			if total >= num && waitCh != nil {
+				waitCh <- true
+			}
+		}
+	}(ports)
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
+
 	log.Println("Started...")
 	for {
-		ip, err := filePort.RecvMessageBytes(0)
+		ip, err := filePort.RecvMessageBytes(zmq.DONTWAIT)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
+			select {
+			case <-fileExitCh:
+				log.Println("FILE port is closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+				break
+			default:
+				// IN port is still open
+			}
+			time.Sleep(2 * time.Second)
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -131,14 +181,5 @@ func main() {
 		f.Close()
 
 		outPort.SendMessage(runtime.NewCloseBracket())
-
-		select {
-		case <-fileCh:
-			log.Println("FILE port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-			break
-		default:
-			// file port is still open
-		}
 	}
 }

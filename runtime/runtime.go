@@ -325,8 +325,6 @@ func (r *Runtime) Start() {
 //
 func (r *Runtime) Activate() {
 	if len(r.iips) > 0 {
-		log.SystemOutput("Activating processes by sending IIPs...")
-
 		// Connect to ports of IIP (so the components can resume execution)
 		senders := make([]*zmq.Socket, len(r.iips))
 		for i, iip := range r.iips {
@@ -344,6 +342,7 @@ func (r *Runtime) Activate() {
 		time.Sleep(2 * time.Second)
 
 		// Send IIPs out!
+		log.SystemOutput("Activating processes by sending IIPs...")
 		for i, iip := range r.iips {
 			log.SystemOutput(fmt.Sprintf("Sending '%s' to socket '%s'", iip.Payload, iip.Socket))
 			senders[i].SendMessageDontwait(NewPacket([]byte(iip.Payload)))
