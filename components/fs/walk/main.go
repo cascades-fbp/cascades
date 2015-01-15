@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
 	"github.com/cascades-fbp/cascades/runtime"
@@ -41,7 +42,7 @@ func validateArgs() {
 }
 
 func openPorts() {
-	inPort, err = utils.CreateInputPort("fs/walk.in", *inputEndpoint, inCh)
+	inPort, err = utils.CreateInputPort("fs/walk.dir", *inputEndpoint, inCh)
 	utils.AssertError(err)
 
 	outPort, err = utils.CreateOutputPort("fs/walk.file", *outputEndpoint, outCh)
@@ -84,25 +85,74 @@ func main() {
 	inCh = make(chan bool)
 	outCh = make(chan bool)
 	errCh = make(chan bool)
-	go func() {
-		select {
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-errCh:
-			log.Println("ERR port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
 
 	openPorts()
 	defer closePorts()
 
+	ports := 1
+	if outPort != nil {
+		ports++
+	}
+	if errPort != nil {
+		ports++
+	}
+
+	waitCh := make(chan bool)
+	inExitCh := make(chan bool, 1)
+	go func(num int) {
+		total := 0
+		for {
+			select {
+			case v := <-inCh:
+				if v {
+					total++
+				} else {
+					inExitCh <- true
+				}
+			case v := <-outCh:
+				if !v {
+					log.Println("OUT port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			case v := <-errCh:
+				if !v {
+					log.Println("ERR port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+				} else {
+					total++
+				}
+			}
+			if total >= num && waitCh != nil {
+				waitCh <- true
+			}
+		}
+	}(ports)
+
+	log.Println("Waiting for port connections to establish... ")
+	select {
+	case <-waitCh:
+		log.Println("Ports connected")
+		waitCh = nil
+	case <-time.Tick(30 * time.Second):
+		log.Println("Timeout: port connections were not established within provided interval")
+		os.Exit(1)
+	}
+
 	log.Println("Started...")
 	for {
-		ip, err = inPort.RecvMessageBytes(0)
+		ip, err := inPort.RecvMessageBytes(zmq.DONTWAIT)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
+			select {
+			case <-inExitCh:
+				log.Println("DIR port is closed. Interrupting execution")
+				ch <- syscall.SIGTERM
+				break
+			default:
+				// IN port is still open
+			}
+			time.Sleep(2 * time.Second)
 			continue
 		}
 		if !runtime.IsValidIP(ip) {

@@ -88,27 +88,17 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
-	outCh = make(chan bool)
-	errCh = make(chan bool)
-	go func() {
-		select {
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-errCh:
-			log.Println("ERR port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
-
-	openPorts()
-	defer closePorts()
-
 	// Setup watcher
 	watcher, err := fsnotify.NewWatcher()
 	utils.AssertError(err)
 	defer watcher.Close()
+
+	ch := utils.HandleInterruption()
+	outCh = make(chan bool)
+	errCh = make(chan bool)
+
+	openPorts()
+	defer closePorts()
 
 	// Process events
 	go func() {
@@ -151,6 +141,25 @@ func main() {
 		}
 	}()
 
+	go func() {
+		for {
+			select {
+			case v := <-outCh:
+				if !v {
+					log.Println("CREATED port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+					break
+				}
+			case v := <-errCh:
+				if !v {
+					log.Println("ERR port is closed. Interrupting execution")
+					ch <- syscall.SIGTERM
+					break
+				}
+			}
+		}
+	}()
+
 	// Main loop
 	log.Println("Started")
 	for {
@@ -175,7 +184,7 @@ func main() {
 			return nil
 		})
 		if err != nil {
-			log.Printf("ERROR openning file %s: %s", dir, err.Error())
+			log.Printf("ERROR opening file %s: %s", dir, err.Error())
 			if errPort != nil {
 				errPort.SendMessage(runtime.NewPacket([]byte(err.Error())))
 			}
