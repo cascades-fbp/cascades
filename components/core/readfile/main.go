@@ -134,7 +134,7 @@ func main() {
 
 		select {
 		case <-fileCh:
-			log.Println("FILE port is closed. Closing port")
+			log.Println("FILE port is closed. Interrupting execution")
 			ch <- syscall.SIGTERM
 			break
 		default:

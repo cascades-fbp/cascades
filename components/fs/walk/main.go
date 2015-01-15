@@ -128,7 +128,7 @@ func main() {
 
 		select {
 		case <-inCh:
-			log.Println("IN port is closed. Closing port")
+			log.Println("IN port is closed. Interrupting execution")
 			ch <- syscall.SIGTERM
 			break
 		default:
