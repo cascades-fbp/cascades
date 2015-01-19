@@ -46,12 +46,8 @@ func run(c *cli.Context) {
 		scheduler.PrintGraph()
 	}
 
-	if c.Bool("dry") {
-		return
-	}
-
 	// Start the network
-	go scheduler.Start()
+	go scheduler.Start(c.Bool("dry"))
 
 	// Shutdown ZMQ upon shutdown
 	defer zmq.Term()

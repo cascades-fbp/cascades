@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -204,6 +205,7 @@ func (r *Runtime) prepareProcesses() error {
 				sockets[endpoint] = s
 			}
 			r.iips = append(r.iips, iip)
+
 		} else {
 			srcIndex = 0
 			tgtIndex = 0
@@ -232,18 +234,37 @@ func (r *Runtime) prepareProcesses() error {
 			}
 		}
 	}
+
+	// Solves: https://github.com/cascades-fbp/cascades/issues/17
+	keys := make([]string, len(sockets))
+	i := 0
+	for k := range sockets {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+
 	// Compact sockets
 	arguments := map[string][]string{}
-	for n, s := range sockets {
+	for _, n := range keys {
 		parts := strings.SplitN(n, ".", 3)
 		k := parts[0] + "." + parts[1]
 		if _, ok := arguments[k]; ok {
-			arguments[k] = append(arguments[k], s)
+			arguments[k] = append(arguments[k], sockets[n])
 		} else {
-			arguments[k] = []string{s}
+			arguments[k] = []string{sockets[n]}
 		}
 
 	}
+
+	if r.Debug {
+		fmt.Println("------------ IIPs -------------")
+		for _, d := range r.iips {
+			fmt.Printf("'%v' -> %v\n", string(d.Payload), d.Socket)
+		}
+		fmt.Println("-------------------------------")
+	}
+
 	// Add sockets to component CLI arguments
 	for n, s := range arguments {
 		parts := strings.SplitN(n, ".", 2)
@@ -269,7 +290,7 @@ func (r *Runtime) prepareProcesses() error {
 //
 // Start the network based on the current graph
 //
-func (r *Runtime) Start() {
+func (r *Runtime) Start(dry bool) {
 	err := r.prepareProcesses()
 	if err != nil {
 		log.ErrorOutput("Failed to create a process: " + err.Error())
@@ -279,6 +300,11 @@ func (r *Runtime) Start() {
 
 	if len(r.processes) == 0 {
 		log.SystemOutput("No processes to start")
+		r.Done <- true
+		return
+	}
+
+	if dry {
 		r.Done <- true
 		return
 	}

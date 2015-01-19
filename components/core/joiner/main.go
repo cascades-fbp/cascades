@@ -53,7 +53,7 @@ func openPorts() {
 
 	for i, endpoint := range inports {
 		endpoint = strings.TrimSpace(endpoint)
-		log.Printf("Binding OUT[%v]=%s", i, endpoint)
+		log.Printf("Binding IN[%v]=%s", i, endpoint)
 		port, err = utils.CreateInputPort(fmt.Sprintf("joiner.in[%v]", i), endpoint, inCh)
 		utils.AssertError(err)
 		inPortArray = append(inPortArray, port)
@@ -161,6 +161,14 @@ func main() {
 			if !runtime.IsValidIP(ip) {
 				log.Println("Received invalid IP")
 				continue
+			}
+
+			if *debug {
+				for i, s := range inPortArray {
+					if s == r.Socket {
+						log.Printf("Data from port IN[%v]: %#v", i, string(ip[1]))
+					}
+				}
 			}
 
 			outPort.SendMessage(ip)
