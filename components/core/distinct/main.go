@@ -27,6 +27,8 @@ var (
 	// Internal
 	optionsPort, inPort, outPort *zmq.Socket
 	inCh, outCh                  chan bool
+	opts                         *options
+	localCache                   *Cache
 	err                          error
 )
 
@@ -160,8 +162,7 @@ func main() {
 
 	log.Println("Waiting for options...")
 	var (
-		opts *options
-		ip   [][]byte
+		ip [][]byte
 	)
 	for {
 		ip, err = optionsPort.RecvMessageBytes(0)
@@ -193,17 +194,20 @@ func main() {
 		}
 	*/
 
-	c := NewCache(time.Duration(opts.DefaultExpiration)*time.Second, time.Duration(opts.CleanupInterval)*time.Second)
+	localCache = NewCache(time.Duration(opts.DefaultExpiration)*time.Second, time.Duration(opts.CleanupInterval)*time.Second)
 	if opts.IsPersistent() {
-		err = c.LoadFile(opts.File)
+		log.Println("Cache is persistent. Using file", opts.File)
+		err = localCache.LoadFile(opts.File)
 		if err != nil {
 			log.Println("WARNING: Failed to load cache from file", opts.File)
 		}
-		defer func() {
-			log.Println("Saving current cache to", opts.File)
-			c.SaveFile(opts.File)
-		}()
 	}
+	defer func() {
+		if opts.IsPersistent() {
+			log.Println("Saving current cache to", opts.File)
+			localCache.SaveFile(opts.File)
+		}
+	}()
 
 	log.Println("Started...")
 	for {
@@ -218,7 +222,7 @@ func main() {
 		}
 
 		key := fmt.Sprintf("%x", md5.Sum(ip[1]))
-		if _, found := c.Get(key); found {
+		if _, found := localCache.Get(key); found {
 			log.Println("Cache HIT. Not forwarding this IP")
 			continue
 		}
@@ -227,6 +231,6 @@ func main() {
 
 		outPort.SendMessage(ip)
 
-		c.Add(key, nil, 0)
+		localCache.Add(key, nil, 0)
 	}
 }

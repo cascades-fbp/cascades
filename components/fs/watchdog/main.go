@@ -131,7 +131,7 @@ func main() {
 					} else {
 						outPort.SendMessage(runtime.NewPacket([]byte(ev.Name)))
 					}
-				} else if ev.IsDelete() {
+				} else if ev.IsDelete() && isDir(ev.Name) {
 					watcher.RemoveWatch(ev.Name)
 					log.Println("Removed from watch:", ev.Name)
 				}
