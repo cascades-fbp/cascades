@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"syscall"
 	"time"
 
@@ -23,25 +24,9 @@ var (
 	// Internal
 	inPort *zmq.Socket
 	inCh   chan bool
+	exitCh chan os.Signal
 	err    error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	inPort, err = utils.CreateInputPort("console.in", *inputEndpoint, inCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	inPort.Close()
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -61,12 +46,26 @@ func main() {
 
 	validateArgs()
 
+	// Communication channels
 	inCh = make(chan bool)
-	ch := utils.HandleInterruption()
+	exitCh = make(chan os.Signal, 1)
 
+	// Block until all is connected
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+	time.Sleep(1e9) // give ZMQ some time to finish
+	log.Println("Stopped")
+	os.Exit(0)
+}
+
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
+	// Connections monitoring routine
 	waitCh := make(chan bool)
 	go func() {
 		for {
@@ -76,7 +75,8 @@ func main() {
 			}
 			if !v {
 				log.Println("IN port is closed. Interrupting execution")
-				ch <- syscall.SIGTERM
+				exitCh <- syscall.SIGTERM
+				break
 			}
 		}
 	}()
@@ -88,7 +88,8 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Started...")
@@ -110,4 +111,21 @@ func main() {
 			fmt.Println("]")
 		}
 	}
+}
+
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+func openPorts() {
+	inPort, err = utils.CreateInputPort("console.in", *inputEndpoint, inCh)
+	utils.AssertError(err)
+}
+
+func closePorts() {
+	inPort.Close()
+	zmq.Term()
 }
