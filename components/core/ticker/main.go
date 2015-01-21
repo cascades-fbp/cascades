@@ -58,7 +58,6 @@ func main() {
 	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
 	<-exitCh
 
-	closePorts()
 	log.Println("Done")
 }
 
@@ -110,7 +109,6 @@ func mainLoop() {
 		}
 		break
 	}
-	intervalPort.Close()
 
 	ticker := time.NewTicker(interval)
 	log.Printf("Configured to tick with interval: %v", interval)
@@ -145,6 +143,7 @@ func openPorts() {
 
 // closePorts closes all active ports and terminates ZMQ context
 func closePorts() {
+	log.Println("Closing ports...")
 	intervalPort.Close()
 	outPort.Close()
 	zmq.Term()

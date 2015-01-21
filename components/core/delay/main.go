@@ -60,7 +60,6 @@ func main() {
 	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
 	<-exitCh
 
-	closePorts()
 	log.Println("Done")
 }
 
@@ -131,7 +130,6 @@ func mainLoop() {
 	for {
 		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -172,6 +170,7 @@ func openPorts() {
 
 // closePorts closes all active ports and terminates ZMQ context
 func closePorts() {
+	log.Println("Closing ports...")
 	inPort.Close()
 	delayPort.Close()
 	outPort.Close()

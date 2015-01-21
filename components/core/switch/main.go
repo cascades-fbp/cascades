@@ -61,7 +61,6 @@ func main() {
 	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
 	<-exitCh
 
-	closePorts()
 	log.Println("Done")
 }
 
@@ -212,6 +211,7 @@ func openPorts() {
 
 // closePorts closes all active ports and terminates ZMQ context
 func closePorts() {
+	log.Println("Closing ports...")
 	inPort.Close()
 	outPort.Close()
 	zmq.Term()
