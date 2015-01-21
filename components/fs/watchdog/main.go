@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"syscall"
 
@@ -26,49 +27,10 @@ var (
 	// Internal
 	inPort, outPort, errPort *zmq.Socket
 	outCh, errCh             chan bool
+	exitCh                   chan os.Signal
 	ip                       [][]byte
 	err                      error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	inPort, err = utils.CreateInputPort("fs/watchdog.in", *inputEndpoint, nil)
-	utils.AssertError(err)
-
-	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort("fs/watchdog.err", *errorEndpoint, errCh)
-		utils.AssertError(err)
-	}
-}
-
-func closePorts() {
-	inPort.Close()
-	if outPort != nil {
-		outPort.Close()
-	}
-	if errPort != nil {
-		errPort.Close()
-	}
-	zmq.Term()
-}
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
-}
 
 func main() {
 	flag.Parse()
@@ -88,14 +50,31 @@ func main() {
 
 	validateArgs()
 
-	// Setup watcher
-	watcher, err := fsnotify.NewWatcher()
-	utils.AssertError(err)
-	defer watcher.Close()
-
-	ch := utils.HandleInterruption()
+	// Communication channels
 	outCh = make(chan bool)
 	errCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
+
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
+	// Setup watcher
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		exitCh <- syscall.SIGTERM
+		return
+	}
+	defer watcher.Close()
 
 	openPorts()
 	defer closePorts()
@@ -104,7 +83,10 @@ func main() {
 	go func() {
 		//  Socket to send messages to task sink
 		outPort, err = utils.CreateOutputPort("fs/watchdog.out", *outputEndpoint, errCh)
-		utils.AssertError(err)
+		if err != nil {
+			exitCh <- syscall.SIGTERM
+			return
+		}
 		for {
 			select {
 			case ev := <-watcher.Event:
@@ -147,13 +129,13 @@ func main() {
 			case v := <-outCh:
 				if !v {
 					log.Println("CREATED port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
 					break
 				}
 			case v := <-errCh:
 				if !v {
 					log.Println("ERR port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
 					break
 				}
 			}
@@ -165,7 +147,6 @@ func main() {
 	for {
 		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -191,4 +172,47 @@ func main() {
 			continue
 		}
 	}
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	inPort, err = utils.CreateInputPort("fs/watchdog.in", *inputEndpoint, nil)
+	utils.AssertError(err)
+
+	if *errorEndpoint != "" {
+		errPort, err = utils.CreateOutputPort("fs/watchdog.err", *errorEndpoint, errCh)
+		utils.AssertError(err)
+	}
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	inPort.Close()
+	if outPort != nil {
+		outPort.Close()
+	}
+	if errPort != nil {
+		errPort.Close()
+	}
+	zmq.Term()
 }

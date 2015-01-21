@@ -6,11 +6,11 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/cascades-fbp/cascades/components/utils"
-	"github.com/cascades-fbp/cascades/runtime"
 	zmq "github.com/pebbe/zmq4"
 )
 
@@ -23,25 +23,9 @@ var (
 	// Internal
 	inPort *zmq.Socket
 	inCh   chan bool
+	exitCh chan os.Signal
 	err    error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	inPort, err = utils.CreateInputPort("drop.in", *inputEndpoint, inCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	inPort.Close()
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -61,12 +45,27 @@ func main() {
 
 	validateArgs()
 
+	// Communication channels
 	inCh = make(chan bool)
-	ch := utils.HandleInterruption()
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
+	// Connections monitoring routine
 	waitCh := make(chan bool)
 	go func() {
 		for {
@@ -76,7 +75,8 @@ func main() {
 			}
 			if !v {
 				log.Println("IN port is closed. Interrupting execution")
-				ch <- syscall.SIGTERM
+				exitCh <- syscall.SIGTERM
+				break
 			}
 		}
 	}()
@@ -88,19 +88,32 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Started...")
 	for {
-		ip, err := inPort.RecvMessageBytes(0)
-		if err != nil {
-			log.Println("Error receiving message:", err.Error())
-			continue
-		}
-		if !runtime.IsValidIP(ip) {
-			log.Println("Invalid IP:", ip)
-			continue
-		}
+		inPort.RecvMessageBytes(0)
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	inPort, err = utils.CreateInputPort("drop.in", *inputEndpoint, inCh)
+	utils.AssertError(err)
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	inPort.Close()
+	zmq.Term()
 }

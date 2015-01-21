@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"syscall"
 	"time"
@@ -26,42 +27,10 @@ var (
 	// Internal
 	inPort, outPort, errPort *zmq.Socket
 	inCh, outCh, errCh       chan bool
+	exitCh                   chan os.Signal
 	ip                       [][]byte
 	err                      error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	inPort, err = utils.CreateInputPort("fs/walk.dir", *inputEndpoint, inCh)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort("fs/walk.file", *outputEndpoint, outCh)
-	utils.AssertError(err)
-
-	if *errorEndpoint != "" {
-		errPort, err = utils.CreateOutputPort("fs/walk.err", *errorEndpoint, errCh)
-		utils.AssertError(err)
-	}
-}
-
-func closePorts() {
-	inPort.Close()
-	outPort.Close()
-	if errPort != nil {
-		errPort.Close()
-	}
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -81,11 +50,25 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
+	// Communication channels
 	inCh = make(chan bool)
 	outCh = make(chan bool)
 	errCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
@@ -112,14 +95,16 @@ func main() {
 			case v := <-outCh:
 				if !v {
 					log.Println("OUT port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
 			case v := <-errCh:
 				if !v {
 					log.Println("ERR port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
@@ -137,7 +122,8 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		break
 	}
 
 	log.Println("Started...")
@@ -147,7 +133,7 @@ func main() {
 			select {
 			case <-inExitCh:
 				log.Println("DIR port is closed. Interrupting execution")
-				ch <- syscall.SIGTERM
+				exitCh <- syscall.SIGTERM
 				break
 			default:
 				// IN port is still open
@@ -179,10 +165,46 @@ func main() {
 		select {
 		case <-inCh:
 			log.Println("IN port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
+			exitCh <- syscall.SIGTERM
 			break
 		default:
 			// IN port is still open
 		}
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	inPort, err = utils.CreateInputPort("fs/walk.dir", *inputEndpoint, inCh)
+	utils.AssertError(err)
+
+	outPort, err = utils.CreateOutputPort("fs/walk.file", *outputEndpoint, outCh)
+	utils.AssertError(err)
+
+	if *errorEndpoint != "" {
+		errPort, err = utils.CreateOutputPort("fs/walk.err", *errorEndpoint, errCh)
+		utils.AssertError(err)
+	}
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	inPort.Close()
+	outPort.Close()
+	if errPort != nil {
+		errPort.Close()
+	}
+	zmq.Term()
 }

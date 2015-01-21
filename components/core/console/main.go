@@ -50,17 +50,18 @@ func main() {
 	inCh = make(chan bool)
 	exitCh = make(chan os.Signal, 1)
 
-	// Block until all is connected
+	// Start the communication & processing logic
 	go mainLoop()
 
 	// Wait for the end...
 	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
 	<-exitCh
-	time.Sleep(1e9) // give ZMQ some time to finish
-	log.Println("Stopped")
-	os.Exit(0)
+
+	closePorts()
+	log.Println("Done")
 }
 
+// mainLoop initiates all ports and handles the traffic
 func mainLoop() {
 	openPorts()
 	defer closePorts()
@@ -96,7 +97,6 @@ func mainLoop() {
 	for {
 		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -113,6 +113,7 @@ func mainLoop() {
 	}
 }
 
+// validateArgs checks all required flags
 func validateArgs() {
 	if *inputEndpoint == "" {
 		flag.Usage()
@@ -120,11 +121,13 @@ func validateArgs() {
 	}
 }
 
+// openPorts create ZMQ sockets and start socket monitoring loops
 func openPorts() {
 	inPort, err = utils.CreateInputPort("console.in", *inputEndpoint, inCh)
 	utils.AssertError(err)
 }
 
+// closePorts closes all active ports and terminates ZMQ context
 func closePorts() {
 	inPort.Close()
 	zmq.Term()

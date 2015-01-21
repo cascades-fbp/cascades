@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
 	"syscall"
 	"time"
@@ -26,50 +27,10 @@ var (
 	inPortArray   []*zmq.Socket
 	outPort, port *zmq.Socket
 	inCh, outCh   chan bool
+	exitCh        chan os.Signal
 	poller        *zmq.Poller
 	err           error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	inports := strings.Split(*inputEndpoint, ",")
-	if len(inports) == 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	inPortArray = []*zmq.Socket{}
-	poller = zmq.NewPoller()
-
-	for i, endpoint := range inports {
-		endpoint = strings.TrimSpace(endpoint)
-		log.Printf("Binding IN[%v]=%s", i, endpoint)
-		port, err = utils.CreateInputPort(fmt.Sprintf("joiner.in[%v]", i), endpoint, inCh)
-		utils.AssertError(err)
-		inPortArray = append(inPortArray, port)
-		poller.Add(port, zmq.POLLIN)
-	}
-
-	outPort, err = utils.CreateOutputPort("joiner.out", *outputEndpoint, outCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	for _, port = range inPortArray {
-		port.Close()
-	}
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -89,10 +50,24 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
+	// Communication channels
 	inCh = make(chan bool)
 	outCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
@@ -110,7 +85,7 @@ func main() {
 			case v := <-outCh:
 				if !v {
 					log.Println("OUT port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
 					break
 				} else {
 					total++
@@ -119,8 +94,8 @@ func main() {
 			if total >= num && waitCh != nil {
 				waitCh <- true
 			} else if total <= 1 && waitCh == nil {
-				log.Println("All input ports closed. Interrupting execution")
-				ch <- syscall.SIGTERM
+				log.Println("All IN ports closed. Interrupting execution")
+				exitCh <- syscall.SIGTERM
 				break
 			}
 		}
@@ -133,18 +108,16 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Started...")
-	var (
-		ip [][]byte
-	)
+	var ip [][]byte
 
 	for {
 		results, err := poller.Poll(-1)
 		if err != nil {
-			log.Println("Error polling ports:", err.Error())
 			continue
 		}
 
@@ -155,7 +128,6 @@ func main() {
 			}
 			ip, err = r.Socket.RecvMessageBytes(0)
 			if err != nil {
-				log.Println("Error receiving message:", err.Error())
 				continue
 			}
 			if !runtime.IsValidIP(ip) {
@@ -174,4 +146,49 @@ func main() {
 			outPort.SendMessage(ip)
 		}
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	inports := strings.Split(*inputEndpoint, ",")
+	if len(inports) == 0 {
+		flag.Usage()
+		exitCh <- syscall.SIGTERM
+		return
+	}
+
+	inPortArray = []*zmq.Socket{}
+	poller = zmq.NewPoller()
+
+	for i, endpoint := range inports {
+		endpoint = strings.TrimSpace(endpoint)
+		log.Printf("Binding IN[%v]=%s", i, endpoint)
+		port, err = utils.CreateInputPort(fmt.Sprintf("joiner.in[%v]", i), endpoint, inCh)
+		utils.AssertError(err)
+		inPortArray = append(inPortArray, port)
+		poller.Add(port, zmq.POLLIN)
+	}
+
+	outPort, err = utils.CreateOutputPort("joiner.out", *outputEndpoint, outCh)
+	utils.AssertError(err)
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	for _, port = range inPortArray {
+		port.Close()
+	}
+	zmq.Term()
 }

@@ -28,78 +28,12 @@ var (
 	// Internal
 	optionsPort, inPort, outPort *zmq.Socket
 	inCh, outCh                  chan bool
+	exitCh                       chan os.Signal
 	opts                         *options
 	localCache                   *Cache
 	err                          error
 )
 
-// Options
-type options struct {
-	DefaultExpiration int    `json:"duration"`
-	CleanupInterval   int    `json:"cleanup"`
-	File              string `json:"file"`
-}
-
-func (o *options) IsPersistent() bool {
-	return o.File != ""
-}
-
-func (o *options) Validate() error {
-	if o.DefaultExpiration < 0 {
-		o.DefaultExpiration = 0
-	}
-	if o.CleanupInterval < 0 {
-		o.CleanupInterval = 0
-	}
-	if o.CleanupInterval < o.DefaultExpiration {
-		o.CleanupInterval = o.DefaultExpiration + 10
-	}
-	if o.IsPersistent() {
-		info, err := os.Stat(o.File)
-		if err != nil && !os.IsNotExist(err) {
-			return err
-		}
-		if info.IsDir() {
-			return fmt.Errorf("Received directory instead of a file: %s", o.File)
-		}
-	}
-	return nil
-}
-
-func validateArgs() {
-	if *optionsEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	optionsPort, err = utils.CreateInputPort("distinct.options", *optionsEndpoint, nil)
-	utils.AssertError(err)
-
-	inPort, err = utils.CreateInputPort("distinct.in", *inputEndpoint, inCh)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort("distinct.out", *outputEndpoint, outCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	optionsPort.Close()
-	inPort.Close()
-	outPort.Close()
-	zmq.Term()
-}
-
-// Main entry point
 func main() {
 	flag.Parse()
 
@@ -118,22 +52,24 @@ func main() {
 
 	validateArgs()
 
-	//utils.HandleInterruption()
-
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		for _ = range ch {
-			// Give 0MQ time to deliver before stopping...
-			time.Sleep(1e9)
-			log.Println("Stopped WOWOWOWO!")
-			os.Exit(0)
-		}
-	}()
-
+	// Communication channels
 	inCh = make(chan bool)
 	outCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
@@ -145,14 +81,16 @@ func main() {
 			case v := <-inCh:
 				if !v {
 					log.Println("IN port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
 			case v := <-outCh:
 				if !v {
 					log.Println("OUT port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
@@ -170,7 +108,8 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Waiting for options...")
@@ -180,18 +119,15 @@ func main() {
 	for {
 		ip, err = optionsPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
 			log.Println("Invalid IP:", ip)
-			ch <- syscall.SIGTERM
 			continue
 		}
 		err = json.Unmarshal(ip[1], &opts)
 		if err != nil {
 			log.Println("Failed to resolve options:", err.Error())
-			ch <- syscall.SIGTERM
 			continue
 		}
 		log.Printf("Using options: %#v", opts)
@@ -226,7 +162,6 @@ func main() {
 	for {
 		ip, err = inPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -246,4 +181,40 @@ func main() {
 
 		localCache.Add(key, nil, 0)
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *optionsEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	optionsPort, err = utils.CreateInputPort("distinct.options", *optionsEndpoint, nil)
+	utils.AssertError(err)
+
+	inPort, err = utils.CreateInputPort("distinct.in", *inputEndpoint, inCh)
+	utils.AssertError(err)
+
+	outPort, err = utils.CreateOutputPort("distinct.out", *outputEndpoint, outCh)
+	utils.AssertError(err)
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	optionsPort.Close()
+	inPort.Close()
+	outPort.Close()
+	zmq.Term()
 }

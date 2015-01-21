@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"regexp"
 	"syscall"
 	"time"
@@ -27,6 +28,7 @@ var (
 	// Internal
 	patternPort, inPort, mapPort *zmq.Socket
 	inCh, mapCh                  chan bool
+	exitCh                       chan os.Signal
 	err                          error
 )
 
@@ -50,39 +52,6 @@ func (r *mainRegexp) FindStringSubmatchMap(s string) map[string]string {
 	return captures
 }
 
-func validateArgs() {
-	if *patternEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *mapEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	patternPort, err = utils.CreateInputPort("submatch.pattern", *patternEndpoint, nil)
-	utils.AssertError(err)
-
-	inPort, err = utils.CreateInputPort("submatch.in", *inputEndpoint, inCh)
-	utils.AssertError(err)
-
-	mapPort, err = utils.CreateOutputPort("submatch.map", *mapEndpoint, mapCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	patternPort.Close()
-	inPort.Close()
-	mapPort.Close()
-	zmq.Term()
-}
-
 func main() {
 	flag.Parse()
 
@@ -101,10 +70,24 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
+	// Communication channels
 	inCh = make(chan bool)
 	mapCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
@@ -116,14 +99,16 @@ func main() {
 			case v := <-inCh:
 				if !v {
 					log.Println("IN port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
 			case v := <-mapCh:
 				if !v {
 					log.Println("MAP port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
@@ -141,7 +126,8 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Waiting for pattern...")
@@ -152,7 +138,6 @@ func main() {
 	for {
 		ip, err = patternPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -169,7 +154,6 @@ func main() {
 	for {
 		ip, err = inPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -187,4 +171,40 @@ func main() {
 
 		mapPort.SendMessage(runtime.NewPacket(data))
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *patternEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *mapEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	patternPort, err = utils.CreateInputPort("submatch.pattern", *patternEndpoint, nil)
+	utils.AssertError(err)
+
+	inPort, err = utils.CreateInputPort("submatch.in", *inputEndpoint, inCh)
+	utils.AssertError(err)
+
+	mapPort, err = utils.CreateOutputPort("submatch.map", *mapEndpoint, mapCh)
+	utils.AssertError(err)
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	patternPort.Close()
+	inPort.Close()
+	mapPort.Close()
+	zmq.Term()
 }

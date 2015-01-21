@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"strings"
 	"syscall"
 	"time"
@@ -25,47 +26,10 @@ var (
 	// Internal
 	outPortArray []*zmq.Socket
 	inPort, port *zmq.Socket
+	exitCh       chan os.Signal
 	inCh, outCh  chan bool
 	err          error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	outports := strings.Split(*outputEndpoint, ",")
-	if len(outports) == 0 {
-		flag.Usage()
-		os.Exit(1)
-	}
-
-	inPort, err = utils.CreateInputPort("splitter.in", *inputEndpoint, inCh)
-	utils.AssertError(err)
-
-	outPortArray = []*zmq.Socket{}
-	for i, endpoint := range outports {
-		endpoint = strings.TrimSpace(endpoint)
-		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
-		port, err = utils.CreateOutputPort(fmt.Sprintf("splitter.out[%v]", i), endpoint, outCh)
-		outPortArray = append(outPortArray, port)
-	}
-}
-
-func closePorts() {
-	inPort.Close()
-	for _, port = range outPortArray {
-		port.Close()
-	}
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -85,10 +49,24 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
+	// Communication channels
 	inCh = make(chan bool)
 	outCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
@@ -106,7 +84,7 @@ func main() {
 			case v := <-inCh:
 				if !v {
 					log.Println("IN port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
 					break
 				} else {
 					total++
@@ -116,7 +94,7 @@ func main() {
 				waitCh <- true
 			} else if total <= 1 && waitCh == nil {
 				log.Println("All output ports closed. Interrupting execution")
-				ch <- syscall.SIGTERM
+				exitCh <- syscall.SIGTERM
 				break
 			}
 		}
@@ -129,14 +107,14 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Started...")
 	for {
 		ip, err := inPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving message:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) {
@@ -147,4 +125,45 @@ func main() {
 			port.SendMessage(ip)
 		}
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	outports := strings.Split(*outputEndpoint, ",")
+	if len(outports) == 0 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	inPort, err = utils.CreateInputPort("splitter.in", *inputEndpoint, inCh)
+	utils.AssertError(err)
+
+	outPortArray = []*zmq.Socket{}
+	for i, endpoint := range outports {
+		endpoint = strings.TrimSpace(endpoint)
+		log.Printf("Connecting OUT[%v]=%s", i, endpoint)
+		port, err = utils.CreateOutputPort(fmt.Sprintf("splitter.out[%v]", i), endpoint, outCh)
+		outPortArray = append(outPortArray, port)
+	}
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	inPort.Close()
+	for _, port = range outPortArray {
+		port.Close()
+	}
+	zmq.Term()
 }

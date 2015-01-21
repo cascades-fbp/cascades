@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"syscall"
 	"time"
 
@@ -24,33 +25,9 @@ var (
 	// Internal
 	intervalPort, outPort *zmq.Socket
 	outCh                 chan bool
+	exitCh                chan os.Signal
 	err                   error
 )
-
-func validateArgs() {
-	if *intervalEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	intervalPort, err = utils.CreateInputPort("ticker.interval", *intervalEndpoint, nil)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort("ticker.out", *outputEndpoint, outCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	intervalPort.Close()
-	outPort.Close()
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -70,9 +47,23 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
+	// Communication channels
 	outCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	openPorts()
 	defer closePorts()
 
@@ -85,7 +76,8 @@ func main() {
 			}
 			if !v {
 				log.Println("OUT port is closed. Interrupting execution")
-				ch <- syscall.SIGTERM
+				exitCh <- syscall.SIGTERM
+				break
 			}
 		}
 	}()
@@ -97,7 +89,8 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
 
 	log.Println("Wait for configuration IP...")
@@ -105,7 +98,6 @@ func main() {
 	for {
 		ip, err := intervalPort.RecvMessageBytes(0)
 		if err != nil {
-			log.Println("Error receiving IP:", err.Error())
 			continue
 		}
 		if !runtime.IsValidIP(ip) || !runtime.IsPacket(ip) {
@@ -120,12 +112,40 @@ func main() {
 	}
 	intervalPort.Close()
 
-	log.Println("Started...")
 	ticker := time.NewTicker(interval)
 	log.Printf("Configured to tick with interval: %v", interval)
 
+	log.Println("Started...")
 	for v := range ticker.C {
 		msg := fmt.Sprintf("%v", v.Unix())
 		outPort.SendMessage(runtime.NewPacket([]byte(msg)))
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *intervalEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	intervalPort, err = utils.CreateInputPort("ticker.interval", *intervalEndpoint, nil)
+	utils.AssertError(err)
+
+	outPort, err = utils.CreateOutputPort("ticker.out", *outputEndpoint, outCh)
+	utils.AssertError(err)
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	intervalPort.Close()
+	outPort.Close()
+	zmq.Term()
 }

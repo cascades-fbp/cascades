@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
 	"syscall"
 	"time"
 
@@ -25,37 +26,9 @@ var (
 	// Internal
 	inPort, gatePort, outPort *zmq.Socket
 	inCh, gateCh, outCh       chan bool
+	exitCh                    chan os.Signal
 	err                       error
 )
-
-func validateArgs() {
-	if *inputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *gateEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-	if *outputEndpoint == "" {
-		flag.Usage()
-		os.Exit(1)
-	}
-}
-
-func openPorts() {
-	inPort, err = utils.CreateInputPort("switch.in", *inputEndpoint, inCh)
-	utils.AssertError(err)
-
-	outPort, err = utils.CreateOutputPort("switch.out", *outputEndpoint, outCh)
-	utils.AssertError(err)
-}
-
-func closePorts() {
-	inPort.Close()
-	outPort.Close()
-	zmq.Term()
-}
 
 func main() {
 	flag.Parse()
@@ -75,11 +48,25 @@ func main() {
 
 	validateArgs()
 
-	ch := utils.HandleInterruption()
+	// Communication channels
 	gateCh = make(chan bool)
 	inCh = make(chan bool)
 	outCh = make(chan bool)
+	exitCh = make(chan os.Signal, 1)
 
+	// Start the communication & processing logic
+	go mainLoop()
+
+	// Wait for the end...
+	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
+	<-exitCh
+
+	closePorts()
+	log.Println("Done")
+}
+
+// mainLoop initiates all ports and handles the traffic
+func mainLoop() {
 	// Start a separate goroutine to receive gate signals and avoid stocking them
 	// blocking the channel (use timeout to skip ticks if data sending is still in progress)
 	tickCh := make(chan bool)
@@ -93,14 +80,12 @@ func main() {
 			log.Println("[Gate routine]: Wait for IP on gate port...")
 			ip, err := gatePort.RecvMessageBytes(0)
 			if err != nil {
-				log.Println("[Gate routine]: Error receiving message:", err.Error())
 				continue
 			}
 			if !runtime.IsValidIP(ip) {
 				log.Println("[Gate routine]: Invalid IP received:", err.Error())
 				continue
 			}
-			log.Println("[Gate routine]: IP received")
 			select {
 			case tickCh <- true:
 				log.Println("[Tick routine]: Main thread notified")
@@ -122,21 +107,24 @@ func main() {
 			case v := <-gateCh:
 				if !v {
 					log.Println("GATE port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
 			case v := <-inCh:
 				if !v {
 					log.Println("IN port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
 			case v := <-outCh:
 				if !v {
 					log.Println("OUT port is closed. Interrupting execution")
-					ch <- syscall.SIGTERM
+					exitCh <- syscall.SIGTERM
+					break
 				} else {
 					total++
 				}
@@ -154,22 +142,9 @@ func main() {
 		waitCh = nil
 	case <-time.Tick(30 * time.Second):
 		log.Println("Timeout: port connections were not established within provided interval")
-		os.Exit(1)
+		exitCh <- syscall.SIGTERM
+		return
 	}
-
-	go func() {
-		select {
-		case <-gateCh:
-			log.Println("GATE port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-inCh:
-			log.Println("IN port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		case <-outCh:
-			log.Println("OUT port is closed. Interrupting execution")
-			ch <- syscall.SIGTERM
-		}
-	}()
 
 	log.Println("Started...")
 	var (
@@ -184,7 +159,6 @@ func main() {
 			for {
 				ip, err = inPort.RecvMessageBytes(0)
 				if err != nil {
-					log.Println("[Main routine]: Error receiving message:", err.Error())
 					break
 				}
 				if !runtime.IsValidIP(ip) {
@@ -209,4 +183,36 @@ func main() {
 			}
 		}
 	}
+}
+
+// validateArgs checks all required flags
+func validateArgs() {
+	if *inputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *gateEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+	if *outputEndpoint == "" {
+		flag.Usage()
+		os.Exit(1)
+	}
+}
+
+// openPorts create ZMQ sockets and start socket monitoring loops
+func openPorts() {
+	inPort, err = utils.CreateInputPort("switch.in", *inputEndpoint, inCh)
+	utils.AssertError(err)
+
+	outPort, err = utils.CreateOutputPort("switch.out", *outputEndpoint, outCh)
+	utils.AssertError(err)
+}
+
+// closePorts closes all active ports and terminates ZMQ context
+func closePorts() {
+	inPort.Close()
+	outPort.Close()
+	zmq.Term()
 }
