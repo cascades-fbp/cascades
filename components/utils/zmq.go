@@ -125,7 +125,6 @@ func MonitorSocket(socket *zmq.Socket, name string) (<-chan zmq.Event, error) {
 		for {
 			data, err := monSock.RecvMessageBytes(0)
 			if err != nil {
-				log.Println("Error receiving monitoring message:", err.Error())
 				return
 			}
 			eventID := zmq.Event(binary.LittleEndian.Uint16(data[0][:2]))
