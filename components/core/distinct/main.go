@@ -27,7 +27,7 @@ var (
 
 	// Internal
 	optionsPort, inPort, outPort *zmq.Socket
-	inCh, outCh                  chan bool
+	inCh, outCh, loopCh          chan bool
 	exitCh                       chan os.Signal
 	opts                         *options
 	localCache                   *Cache
@@ -55,6 +55,7 @@ func main() {
 	// Communication channels
 	inCh = make(chan bool)
 	outCh = make(chan bool)
+	loopCh = make(chan bool)
 	exitCh = make(chan os.Signal, 1)
 
 	// Start the communication & processing logic
@@ -63,6 +64,14 @@ func main() {
 	// Wait for the end...
 	signal.Notify(exitCh, os.Interrupt, syscall.SIGTERM)
 	<-exitCh
+
+	// Shutdown main loop with timeout (let it save the cache if required)
+	select {
+	case loopCh <- true:
+		// let it save all stuff
+		time.Sleep(2 * time.Second)
+	case <-time.Tick(3 * time.Second):
+	}
 
 	log.Println("Done")
 }
@@ -150,19 +159,22 @@ func mainLoop() {
 			log.Println("WARNING: Failed to load cache from file", opts.File)
 		}
 	}
-	defer func() {
-		if opts.IsPersistent() {
-			log.Println("Saving current cache to", opts.File)
-			localCache.SaveFile(opts.File)
-		}
-	}()
 
 	log.Println("Started...")
+loop:
 	for {
-		ip, err = inPort.RecvMessageBytes(0)
+		ip, err = inPort.RecvMessageBytes(zmq.DONTWAIT)
 		if err != nil {
+			select {
+			case <-loopCh:
+				log.Println("Main loop shutdown requested")
+				break loop
+			default:
+			}
+			time.Sleep(2 * time.Second)
 			continue
 		}
+
 		if !runtime.IsValidIP(ip) {
 			log.Println("Invalid IP:", ip)
 			continue
@@ -178,7 +190,15 @@ func mainLoop() {
 
 		outPort.SendMessage(ip)
 
-		localCache.Add(key, nil, 0)
+		localCache.Add(key, 1, 0)
+	}
+
+	if opts.IsPersistent() {
+		log.Println("Saving current cache to", opts.File)
+		err = localCache.SaveFile(opts.File)
+		if err != nil {
+			log.Println("ERROR saving cache to file:", err.Error())
+		}
 	}
 }
 
